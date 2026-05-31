@@ -136,3 +136,20 @@ export async function getDeployerAddress(): Promise<string> {
   const wallet = getDeployerWallet();
   return wallet.address;
 }
+
+/**
+ * checkTxConfirmed
+ * Returns true if the given transaction hash has been mined and succeeded
+ * on the MST chain (receipt exists with status === 1).
+ * Returns false if not yet mined or failed.
+ */
+export async function checkTxConfirmed(txHash: string): Promise<boolean> {
+  try {
+    const provider = getEthersProvider();
+    const receipt = await provider.getTransactionReceipt(txHash);
+    if (!receipt) return false; // not mined yet
+    return receipt.status === 1; // 1 = success, 0 = reverted
+  } catch {
+    return false;
+  }
+}

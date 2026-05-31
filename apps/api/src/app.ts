@@ -14,6 +14,7 @@ import adminRoutes from './modules/admin/admin.routes.js';
 import eventsRoutes from './modules/events/events.routes.js';
 import ticketsRoutes from './modules/tickets/tickets.routes.js';
 import webhooksRoutes from './modules/payments/webhooks.routes.js';
+import orgRoutes from './modules/org/org.routes.js';
 
 ensureJwtKeysExist();
 
@@ -39,6 +40,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api', eventsRoutes);
 app.use('/api/tickets', ticketsRoutes);
 app.use('/api/webhooks', webhooksRoutes);
+app.use('/api/orgs', orgRoutes);
 
 app.get('/health', async (_req, res) => {
   const [dbOk, redisOk, mst] = await Promise.all([
@@ -98,6 +100,12 @@ app.get('/', (_req, res) => {
     webhooks: {
       chainpay: 'POST /api/webhooks/chainpay?order_id=',
       payments: 'POST /api/webhooks/payments?order_id=&provider=',
+    },
+    orgs: {
+      mine: 'GET /api/orgs/me',
+      profile: 'GET /api/orgs/:orgId',
+      bySlug: 'GET /api/orgs/slug/:slug',
+      acceptInvite: 'POST /api/orgs/accept-invite',
     },
   });
 });
