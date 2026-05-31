@@ -1,0 +1,44 @@
+{
+  "name": "@ticketchain/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file=../../.env ./node_modules/tsx/dist/cli.mjs watch src/app.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/app.js",
+    "migrate": "node --env-file=../../.env ./node_modules/node-pg-migrate/bin/node-pg-migrate.js up --database-url-var DATABASE_URL -m migrations --migrations-table pgmigrations",
+    "migrate:down": "node --env-file=../../.env ./node_modules/node-pg-migrate/bin/node-pg-migrate.js down --database-url-var DATABASE_URL -m migrations --migrations-table pgmigrations",
+    "generate:keys": "node scripts/generate-jwt-keys.mjs",
+    "seed": "node --env-file=../../.env ./node_modules/tsx/dist/cli.mjs src/scripts/seed.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "@mstblockchain/mst-sdk": "^1.0.0",
+    "@ticketchain/shared": "workspace:*",
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "ethers": "^6.13.5",
+    "express": "^4.21.2",
+    "jose": "^6.0.10",
+    "pg": "^8.13.3",
+    "pino": "^9.6.0",
+    "pino-http": "^10.4.0",
+    "redis": "^4.7.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.8",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.10",
+    "@types/pg": "^8.11.11",
+    "node-pg-migrate": "^7.9.1",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}

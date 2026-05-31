@@ -1,0 +1,23 @@
+{
+  "name": "ticketchain-mst",
+  "private": true,
+  "scripts": {
+    "dev:api": "pnpm --filter @ticketchain/api dev",
+    "dev:web": "pnpm --filter @ticketchain/web dev",
+    "build": "pnpm -r run build",
+    "migrate": "pnpm --filter @ticketchain/api migrate",
+    "migrate:down": "pnpm --filter @ticketchain/api migrate:down",
+    "seed": "pnpm --filter @ticketchain/api seed",
+    "docker:up": "docker compose up -d postgres redis",
+    "docker:down": "docker compose down",
+    "contracts:compile": "pnpm --filter @ticketchain/contracts compile",
+    "contracts:test": "pnpm --filter @ticketchain/contracts test",
+    "contracts:deploy:local": "pnpm --filter @ticketchain/contracts deploy:local",
+    "contracts:deploy:testnet": "pnpm --filter @ticketchain/contracts deploy:testnet",
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm -r run typecheck"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
