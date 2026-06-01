@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { ChevronLeft, Calendar, MapPin, Layers, Compass, Tag, FileCode } from 'lucide-react';
 import { TierPurchase } from '@/components/TierPurchase';
 import { getEvent } from '@/lib/api';
+import Navbar from '@/components/layout/Navbar';
 
 export default async function EventDetailPage({
   params,
@@ -14,33 +16,104 @@ export default async function EventDetailPage({
   const tiers = event.tiers ?? [];
 
   return (
-    <main style={{ fontFamily: 'system-ui', padding: '2rem', maxWidth: 720 }}>
-      <p>
-        <Link href="/events">← All events</Link>
-      </p>
+    <>
+      <Navbar />
+      <div className="bg-zinc-50 min-h-[calc(100vh-4rem)] pb-16">
+        {/* Detail Top Panel */}
+        <section className="bg-white border-b border-zinc-200 py-6">
+          <div className="max-w-4xl mx-auto px-4">
+            <Link
+              href="/events"
+              className="inline-flex items-center text-xs font-mono font-bold text-zinc-500 hover:text-zinc-900 transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" />
+              <span>BACK TO EVENTS</span>
+            </Link>
+          </div>
+        </section>
 
-      <h1>{event.name}</h1>
-      <p style={{ color: '#555' }}>
-        {[event.venueName, event.city, event.country].filter(Boolean).join(' · ')} ·{' '}
-        {new Date(event.eventDate).toLocaleString()}
-      </p>
+        {/* Content */}
+        <main className="max-w-4xl mx-auto px-4 mt-8">
+          <div className="bg-white border border-zinc-200 rounded overflow-hidden">
+            {/* Event Banner */}
+            <div className="aspect-[21/9] bg-zinc-100 border-b border-zinc-100 flex items-center justify-center relative">
+              {event.imageIpfsUrl ? (
+                <img
+                  src={event.imageIpfsUrl}
+                  alt={event.name}
+                  className="w-full h-full object-cover grayscale"
+                />
+              ) : (
+                <Compass className="w-12 h-12 text-zinc-300" />
+              )}
+              {event.category && (
+                <span className="absolute top-4 left-4 text-xs font-mono bg-zinc-950 text-white px-2.5 py-0.5 rounded tracking-wider uppercase">
+                  {event.category}
+                </span>
+              )}
+            </div>
 
-      {event.description && <p>{event.description}</p>}
+            {/* Event Information */}
+            <div className="p-6 sm:p-8 space-y-6">
+              <div className="space-y-3">
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-950 font-mono uppercase">
+                  {event.name}
+                </h1>
+                <div className="flex flex-wrap gap-y-2 gap-x-6 text-xs text-zinc-500 font-mono border-t border-zinc-100 pt-3">
+                  <div className="flex items-center space-x-1.5">
+                    <Calendar className="w-4 h-4 text-zinc-400" />
+                    <span>{new Date(event.eventDate).toLocaleString(undefined, {
+                      dateStyle: 'medium',
+                      timeStyle: 'short'
+                    })}</span>
+                  </div>
+                  <div className="flex items-center space-x-1.5">
+                    <MapPin className="w-4 h-4 text-zinc-400" />
+                    <span>{[event.venueName, event.city, event.country].filter(Boolean).join(', ') || 'Venue TBA'}</span>
+                  </div>
+                  {event.contractAddress && (
+                    <div className="flex items-center space-x-1.5">
+                      <FileCode className="w-4 h-4 text-zinc-400" />
+                      <span className="truncate max-w-[180px] select-all">Contract: {event.contractAddress}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
 
-      <h2>Tickets</h2>
-      {tiers.length === 0 ? (
-        <p>No ticket tiers available.</p>
-      ) : (
-        <div style={{ display: 'grid', gap: '1rem' }}>
-          {tiers.map((tier) => (
-            <TierPurchase key={tier.id} tier={tier} />
-          ))}
-        </div>
-      )}
+              {/* Description */}
+              {event.description && (
+                <div className="space-y-2 border-t border-zinc-100 pt-6">
+                  <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-zinc-400">
+                    About the Event
+                  </h3>
+                  <p className="text-zinc-600 text-sm leading-relaxed whitespace-pre-wrap">
+                    {event.description}
+                  </p>
+                </div>
+              )}
 
-      <p style={{ marginTop: '2rem', fontSize: '0.875rem' }}>
-        <Link href="/login">Sign in</Link> to purchase · <Link href="/tickets">My tickets</Link>
-      </p>
-    </main>
+              {/* Tiers / Tickets Section */}
+              <div className="space-y-4 border-t border-zinc-100 pt-6">
+                <h2 className="text-sm font-mono font-bold uppercase tracking-wider text-zinc-400 flex items-center space-x-1.5">
+                  <Layers className="w-4 h-4" />
+                  <span>Available Ticket Tiers</span>
+                </h2>
+                {tiers.length === 0 ? (
+                  <div className="bg-zinc-50 border border-zinc-200 border-dashed rounded p-6 text-center text-xs font-mono text-zinc-500">
+                    No ticket tiers are currently published for this event.
+                  </div>
+                ) : (
+                  <div className="grid gap-4">
+                    {tiers.map((tier) => (
+                      <TierPurchase key={tier.id} tier={tier} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </>
   );
 }

@@ -5,7 +5,9 @@ import { CHAIN_NAMESPACES, WALLET_ADAPTERS, WEB3AUTH_NETWORK } from '@web3auth/b
 import { AuthAdapter } from '@web3auth/auth-adapter';
 import { EthereumPrivateKeyProvider } from '@web3auth/ethereum-provider';
 import { Web3AuthNoModal } from '@web3auth/no-modal';
-import { verifySession } from '@/lib/api';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Mail, Phone, ShieldCheck, AlertCircle, LogOut, Loader2, ArrowRight } from 'lucide-react';
+import { verifySession, getMe, logoutSession } from '@/lib/api';
 
 const clientId = process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID ?? '';
 const chainIdDecimal = Number(process.env.NEXT_PUBLIC_MST_CHAIN_ID ?? 4545);
@@ -89,12 +91,9 @@ export function Web3AuthLogin() {
   useEffect(() => {
     void (async () => {
       try {
-        const me = await fetch(`${apiUrl}/api/auth/me`, { credentials: 'include' });
-        if (me.ok) {
-          const json = await me.json();
-          if (json.success && json.data) {
-            setUser({ email: json.data.email, walletAddress: json.data.walletAddress });
-          }
+        const me = await getMe();
+        if (me) {
+          setUser({ email: me.email, walletAddress: me.walletAddress });
         }
       } catch {
         // not logged in
@@ -149,7 +148,11 @@ export function Web3AuthLogin() {
   };
 
   const handleLogout = async () => {
-    await fetch(`${apiUrl}/api/auth/logout`, { method: 'POST', credentials: 'include' });
+    try {
+      await logoutSession();
+    } catch {
+      // ignore logout failure
+    }
     setUser(null);
     if (web3authInstance) {
       await web3authInstance.logout();
@@ -159,62 +162,140 @@ export function Web3AuthLogin() {
 
   if (user) {
     return (
-      <div style={{ display: 'grid', gap: '0.75rem' }}>
-        <p>
-          Signed in as <strong>{user.email}</strong>
-        </p>
-        <p style={{ fontSize: '0.875rem', wordBreak: 'break-all' }}>Wallet: {user.walletAddress}</p>
-        <button type="button" onClick={() => void handleLogout()}>
-          Log out
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full bg-white border border-zinc-200 rounded-lg p-6 space-y-6"
+      >
+        <div className="flex items-start space-x-3">
+          <div className="p-2 bg-zinc-100 rounded-full text-zinc-800">
+            <ShieldCheck className="w-5 h-5" />
+          </div>
+          <div className="space-y-1 flex-1">
+            <h3 className="text-sm font-semibold text-zinc-900">Successfully Signed In</h3>
+            <p className="text-xs font-mono text-zinc-500 break-all">{user.email}</p>
+          </div>
+        </div>
+
+        <div className="bg-zinc-50 rounded p-3 space-y-1 border border-zinc-100">
+          <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-400">Custodial Wallet Address</span>
+          <p className="text-xs font-mono text-zinc-700 break-all select-all">{user.walletAddress}</p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => void handleLogout()}
+          className="w-full flex items-center justify-center space-x-2 py-2 border border-zinc-200 text-zinc-600 rounded hover:bg-zinc-50 hover:text-zinc-900 transition-colors text-sm font-medium"
+        >
+          <LogOut className="w-4 h-4" />
+          <span>Log out</span>
         </button>
-      </div>
+      </motion.div>
     );
   }
 
   return (
-    <div style={{ display: 'grid', gap: '1rem', maxWidth: 420 }}>
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
-        <button type="button" onClick={() => setMethod('email')} disabled={method === 'email'}>
-          Email
+    <div className="w-full bg-white border border-zinc-200 rounded-lg p-6 space-y-6">
+      {/* Tabs */}
+      <div className="flex bg-zinc-100 p-0.5 rounded-md">
+        <button
+          type="button"
+          onClick={() => { setMethod('email'); setError(null); }}
+          className={`flex-1 flex items-center justify-center space-x-1.5 py-1.5 rounded-md text-xs font-medium transition-all ${
+            method === 'email' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-900'
+          }`}
+        >
+          <Mail className="w-3.5 h-3.5" />
+          <span>Email</span>
         </button>
-        <button type="button" onClick={() => setMethod('sms')} disabled={method === 'sms'}>
-          Phone (SMS)
+        <button
+          type="button"
+          onClick={() => { setMethod('sms'); setError(null); }}
+          className={`flex-1 flex items-center justify-center space-x-1.5 py-1.5 rounded-md text-xs font-medium transition-all ${
+            method === 'sms' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-900'
+          }`}
+        >
+          <Phone className="w-3.5 h-3.5" />
+          <span>Phone</span>
         </button>
       </div>
 
-      {method === 'email' ? (
-        <label style={{ display: 'grid', gap: '0.5rem' }}>
-          Email
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            disabled={loading}
-          />
-        </label>
-      ) : (
-        <label style={{ display: 'grid', gap: '0.5rem' }}>
-          Phone
-          <input
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="+919876543210"
-            disabled={loading}
-          />
-        </label>
-      )}
+      <AnimatePresence mode="wait">
+        {method === 'email' ? (
+          <motion.div
+            key="email"
+            initial={{ opacity: 0, x: -5 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 5 }}
+            className="space-y-2"
+          >
+            <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wide">
+              Email Address
+            </label>
+            <div className="relative">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                disabled={loading}
+                className="w-full px-3 py-2 border border-zinc-200 rounded text-sm focus:outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 bg-white placeholder-zinc-400 disabled:bg-zinc-50"
+              />
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="sms"
+            initial={{ opacity: 0, x: 5 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -5 }}
+            className="space-y-2"
+          >
+            <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wide">
+              Phone Number
+            </label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+919876543210"
+              disabled={loading}
+              className="w-full px-3 py-2 border border-zinc-200 rounded text-sm focus:outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 bg-white placeholder-zinc-400 disabled:bg-zinc-50"
+            />
+            <p className="text-[10px] text-zinc-400">Include country code (e.g. +91 for India)</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <button
         type="button"
         disabled={loading}
         onClick={() => (method === 'email' ? handleEmailLogin() : handleSmsLogin())}
+        className="w-full flex items-center justify-center space-x-2 py-2.5 bg-zinc-900 text-white rounded hover:bg-zinc-800 disabled:bg-zinc-200 disabled:text-zinc-400 transition-colors text-sm font-semibold shadow-sm"
       >
-        {loading ? 'Signing in…' : method === 'email' ? 'Continue with Email' : 'Continue with SMS'}
+        {loading ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Signing in…</span>
+          </>
+        ) : (
+          <>
+            <span>Continue</span>
+            <ArrowRight className="w-4 h-4" />
+          </>
+        )}
       </button>
 
-      {error && <p style={{ color: '#c00', fontSize: '0.875rem' }}>{error}</p>}
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: -5 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center space-x-2 bg-red-50 text-red-700 px-3 py-2 rounded text-xs border border-red-100"
+        >
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span className="font-medium">{error}</span>
+        </motion.div>
+      )}
     </div>
   );
 }

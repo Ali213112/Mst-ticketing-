@@ -42,6 +42,12 @@ export type {
   PaymentProvider,
   TicketOrderSummary,
 } from './types/payment.types.js';
+export type {
+  VolunteerCheckinResult,
+  VolunteerCheckinStats,
+  VolunteerCheckinHistoryItem,
+  VolunteerEventAssignment,
+} from './types/volunteer.types.js';
 
 export interface ApiResponse<T> {
   success: boolean;

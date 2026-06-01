@@ -15,6 +15,7 @@ import eventsRoutes from './modules/events/events.routes.js';
 import ticketsRoutes from './modules/tickets/tickets.routes.js';
 import webhooksRoutes from './modules/payments/webhooks.routes.js';
 import orgRoutes from './modules/org/org.routes.js';
+import volunteerRoutes from './modules/volunteer/volunteer.routes.js';
 
 ensureJwtKeysExist();
 
@@ -41,6 +42,7 @@ app.use('/api', eventsRoutes);
 app.use('/api/tickets', ticketsRoutes);
 app.use('/api/webhooks', webhooksRoutes);
 app.use('/api/orgs', orgRoutes);
+app.use('/api/volunteer', volunteerRoutes);
 
 app.get('/health', async (_req, res) => {
   const [dbOk, redisOk, mst] = await Promise.all([
@@ -106,6 +108,14 @@ app.get('/', (_req, res) => {
       profile: 'GET /api/orgs/:orgId',
       bySlug: 'GET /api/orgs/slug/:slug',
       acceptInvite: 'POST /api/orgs/accept-invite',
+    },
+    volunteer: {
+      verifyCheckin: 'POST /api/volunteer/checkin/verify',
+      events: 'GET /api/volunteer/events',
+      eventDetail: 'GET /api/volunteer/events/:eventId',
+      checkinStats: 'GET /api/volunteer/checkin/stats?eventId=',
+      checkinHistory: 'GET /api/volunteer/checkin/history?eventId=&page=&limit=',
+      offlineSnapshot: 'GET /api/volunteer/checkin/offline-snapshot?eventId=',
     },
   });
 });
