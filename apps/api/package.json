@@ -14,9 +14,11 @@
     "generate:keys": "node scripts/generate-jwt-keys.mjs",
     "seed": "node --env-file=../../.env ./node_modules/tsx/dist/cli.mjs src/scripts/seed.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint src --ext .ts"
+    "lint": "eslint src --ext .ts",
+    "test": "node --env-file=../../.env ./node_modules/tsx/dist/cli.mjs src/test/smoke.test.ts"
   },
   "dependencies": {
+    "bullmq": "^5.41.0",
     "@mstblockchain/mst-sdk": "^1.0.0",
     "@ticketchain/shared": "workspace:*",
     "bcryptjs": "^2.4.3",
@@ -40,6 +42,8 @@
     "@types/node": "^22.13.10",
     "@types/pg": "^8.11.11",
     "node-pg-migrate": "^7.9.1",
+    "supertest": "^7.0.0",
+    "@types/supertest": "^6.0.2",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2"
   }

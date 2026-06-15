@@ -22,6 +22,7 @@ import {
   getNextTierIndex,
   getOrgWalletForEvent,
   listEventsByOrg,
+  listFeaturedEvents,
   listPublishedEvents,
   listTiersByEvent,
   setEventContract,
@@ -37,7 +38,7 @@ const createEventSchema = z.object({
   description: z.string().max(10000).optional(),
   category: z.string().max(100).optional(),
   tags: z.array(z.string()).optional(),
-  ageRestriction: z.number().int().min(0).max(21).optional(),
+  ageRestriction: z.number().int().min(0).max(99).optional(),
   eventDate: z.string().datetime(),
   eventEndDate: z.string().datetime().optional(),
   venueId: z.string().uuid().optional(),
@@ -80,6 +81,47 @@ function draftOnly(status: string): boolean {
   return status === 'draft';
 }
 
+async function requireVerifiedOrg(orgId: string) {
+  const org = await findOrganisationById(orgId);
+  if (!org) return { error: 'Organisation not found', status: 404 as const };
+  if (org.verificationStatus !== 'verified') {
+    return {
+      error: 'Organisation KYC must be verified before this action',
+      status: 403 as const,
+      code: 'KYC_NOT_VERIFIED' as const,
+    };
+  }
+  return { org };
+}
+
+async function pinTierMetadata(
+  event: Awaited<ReturnType<typeof findEventById>> & object,
+  tier: Awaited<ReturnType<typeof findTierById>> & object,
+  imageHash?: string
+) {
+  const resolvedImageHash =
+    imageHash ?? event.imageIpfsHash ?? `placeholder_${tier.id.replace(/-/g, '')}`;
+
+  const metadata = buildTierMetadata({
+    tierName: tier.name,
+    eventName: event.name,
+    description: tier.description ?? `Ticket for ${event.name}`,
+    imageHash: resolvedImageHash,
+    eventId: event.id,
+    venueName: event.venueName,
+    eventDate: event.eventDate,
+    zone: tier.zone,
+    isTransferable: tier.isTransferable,
+  });
+
+  const metadataPin = await pinJsonToIpfs(`${tier.name}-metadata`, metadata);
+  const updated = await updateTier(event.id, tier.id, {
+    metadata_ipfs_hash: metadataPin.hash,
+    metadata_ipfs_uri: metadataPin.uri,
+  });
+  return updated ?? tier;
+}
+
 async function requireDraftEvent(orgId: string, eventId: string) {
   const event = await findEventById(eventId, orgId);
   if (!event) return { error: 'Event not found', status: 404 as const };
@@ -106,12 +148,17 @@ export async function adminCreateEvent(
   body: unknown
 ) {
   const parsed = createEventSchema.safeParse(body);
-  if (!parsed.success) return { error: 'Invalid request', status: 400 as const };
+  if (!parsed.success) {
+    const details = parsed.error.issues
+      .map((issue) => `${issue.path.join('.') || 'body'}: ${issue.message}`)
+      .join('; ');
+    return { error: details || 'Invalid request', status: 400 as const };
+  }
 
   const org = await findOrganisationById(orgId);
   if (!org) return { error: 'Organisation not found', status: 404 as const };
-  if (org.status !== 'active') {
-    return { error: 'Organisation must be active to create events', status: 403 as const };
+  if (org.status === 'suspended' || org.status === 'inactive') {
+    return { error: 'Organisation account is suspended or inactive', status: 403 as const };
   }
 
   const event = await createEvent({
@@ -132,7 +179,12 @@ export async function adminGetEvent(orgId: string, eventId: string) {
 
 export async function adminUpdateEvent(orgId: string, eventId: string, body: unknown) {
   const parsed = updateEventSchema.safeParse(body);
-  if (!parsed.success) return { error: 'Invalid request', status: 400 as const };
+  if (!parsed.success) {
+    const details = parsed.error.issues
+      .map((issue) => `${issue.path.join('.') || 'body'}: ${issue.message}`)
+      .join('; ');
+    return { error: details || 'Invalid request', status: 400 as const };
+  }
 
   const check = await requireDraftEvent(orgId, eventId);
   if ('error' in check) return check;
@@ -211,7 +263,9 @@ export async function adminCreateTier(orgId: string, eventId: string, body: unkn
     tierIndex,
     ...parsed.data,
   });
-  return { tier, status: 201 as const };
+
+  const tierWithMetadata = await pinTierMetadata(check.event, tier);
+  return { tier: tierWithMetadata, status: 201 as const };
 }
 
 export async function adminUpdateTier(
@@ -272,37 +326,27 @@ export async function adminUploadTierImage(
   const event = check.event;
   const buffer = Buffer.from(parsed.data.contentBase64, 'base64');
   const imagePin = await pinFileToIpfs(parsed.data.fileName, buffer, parsed.data.mimeType);
-
-  const metadata = buildTierMetadata({
-    tierName: tier.name,
-    eventName: event.name,
-    description: tier.description ?? `Ticket for ${event.name}`,
-    imageHash: imagePin.hash,
-    eventId: event.id,
-    venueName: event.venueName,
-    eventDate: event.eventDate,
-    zone: tier.zone,
-    isTransferable: tier.isTransferable,
-  });
-
-  const metadataPin = await pinJsonToIpfs(`${tier.name}-metadata`, metadata);
-
-  const updated = await updateTier(eventId, tierId, {
-    metadata_ipfs_hash: metadataPin.hash,
-    metadata_ipfs_uri: metadataPin.uri,
-  });
+  const updated = await pinTierMetadata(event, tier, imagePin.hash);
   if (!updated) return { error: 'Tier not found', status: 404 as const };
 
   return {
     tier: updated,
     image: imagePin,
-    metadata: metadataPin,
   };
 }
 
 export async function adminDeployEvent(orgId: string, eventId: string) {
   const check = await requireDraftEvent(orgId, eventId);
   if ('error' in check) return check;
+
+  const orgCheck = await requireVerifiedOrg(orgId);
+  if ('error' in orgCheck) {
+    return {
+      error: 'Organisation KYC must be verified before deploying events on-chain',
+      status: orgCheck.status,
+      code: orgCheck.code,
+    };
+  }
 
   const event = check.event;
   if (event.contractAddress) {
@@ -354,6 +398,15 @@ export async function adminDeployEvent(orgId: string, eventId: string) {
 }
 
 export async function adminPublishEvent(orgId: string, eventId: string) {
+  const orgCheck = await requireVerifiedOrg(orgId);
+  if ('error' in orgCheck) {
+    return {
+      error: 'Organisation KYC must be verified before releasing tickets for sale',
+      status: orgCheck.status,
+      code: orgCheck.code,
+    };
+  }
+
   const event = await findEventById(eventId, orgId);
   if (!event) return { error: 'Event not found', status: 404 as const };
   if (event.status !== 'draft') {
@@ -428,6 +481,11 @@ export async function adminCancelEvent(orgId: string, eventId: string) {
   const updated = await updateEventStatus(eventId, orgId, 'cancelled');
   if (!updated) return { error: 'Failed to cancel event', status: 500 as const };
   return { event: updated };
+}
+
+export async function browseFeaturedEvents() {
+  const rows = await listFeaturedEvents(8);
+  return { rows };
 }
 
 export async function browseEvents(query: Record<string, string | undefined>) {

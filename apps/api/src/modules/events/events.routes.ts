@@ -2,10 +2,15 @@ import { Router } from 'express';
 import {
   getEventHandler,
   listEventsHandler,
+  listFeaturedEventsHandler,
   listTiersHandler,
 } from './events.controller.js';
 
 const router = Router();
+
+router.get('/events/featured', (req, res) => {
+  void listFeaturedEventsHandler(req, res);
+});
 
 router.get('/events', (req, res) => {
   void listEventsHandler(req, res);

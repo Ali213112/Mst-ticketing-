@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ticketchain-worker
+  labels:
+    app: ticketchain-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ticketchain-worker
+  template:
+    metadata:
+      labels:
+        app: ticketchain-worker
+    spec:
+      containers:
+        - name: worker
+          image: ticketchain/api:latest
+          command: ["node", "dist/worker.js"]
+          envFrom:
+            - secretRef:
+                name: ticketchain-secrets

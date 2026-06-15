@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { CreditCard, Coins, AlertCircle, Plus, Minus, Loader2 } from 'lucide-react';
-import { createCheckout, getMe, mintTickets, type TierResponse } from '@/lib/api';
+import { CreditCard, Coins, AlertCircle, Plus, Minus, Loader2, Tag, Check } from 'lucide-react';
+import { createCheckout, getMe, mintTickets, validatePromoCode, type TierResponse } from '@/lib/api';
 import { newIdempotencyKey } from '@/lib/idempotency';
 
 const allowDirectMint = process.env.NEXT_PUBLIC_ALLOW_DIRECT_MINT !== 'false';
@@ -18,6 +18,10 @@ export function TierPurchase({ tier, currency = 'INR' }: TierPurchaseProps) {
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState<'chainpay' | 'mint' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [promoCode, setPromoCode] = useState('');
+  const [promoValid, setPromoValid] = useState<{ discountWei: string } | null>(null);
+  const [promoChecking, setPromoChecking] = useState(false);
+  const [promoError, setPromoError] = useState<string | null>(null);
 
   const remaining = tier.totalSupply - tier.minted;
   const soldOut = tier.status === 'sold_out' || remaining <= 0;
@@ -72,6 +76,30 @@ export function TierPurchase({ tier, currency = 'INR' }: TierPurchaseProps) {
     }
   }
 
+  const applyPromo = async () => {
+    if (!promoCode.trim()) return;
+    setPromoChecking(true);
+    setPromoError(null);
+    setPromoValid(null);
+    try {
+      const me = await getMe();
+      if (!me) {
+        setPromoError('Sign in to apply a promo code');
+        return;
+      }
+      const result = await validatePromoCode(promoCode.trim(), tier.id);
+      if (result.valid) {
+        setPromoValid({ discountWei: result.discountWei });
+      } else {
+        setPromoError(result.reason ?? 'Invalid promo code');
+      }
+    } catch (err) {
+      setPromoError(err instanceof Error ? err.message : 'Promo validation failed');
+    } finally {
+      setPromoChecking(false);
+    }
+  };
+
   const incrementQty = () => {
     setQuantity(prev => Math.min(prev + 1, maxBuyable));
   };
@@ -114,6 +142,45 @@ export function TierPurchase({ tier, currency = 'INR' }: TierPurchaseProps) {
         </span>
         {!soldOut && <span>MAX: {tier.maxPerWallet} / user</span>}
       </div>
+
+      {/* Promo code */}
+      {!soldOut && (
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400" />
+              <input
+                type="text"
+                placeholder="Promo code"
+                value={promoCode}
+                onChange={(e) => {
+                  setPromoCode(e.target.value.toUpperCase());
+                  setPromoValid(null);
+                  setPromoError(null);
+                }}
+                className="w-full pl-8 pr-3 py-2 border border-zinc-200 rounded text-xs font-mono uppercase"
+              />
+            </div>
+            <button
+              type="button"
+              disabled={promoChecking || !promoCode.trim()}
+              onClick={() => void applyPromo()}
+              className="px-3 py-2 border border-zinc-200 rounded text-xs font-mono font-bold uppercase hover:bg-zinc-50 disabled:opacity-50"
+            >
+              {promoChecking ? '…' : 'Apply'}
+            </button>
+          </div>
+          {promoValid && (
+            <p className="text-xs font-mono text-green-700 flex items-center gap-1">
+              <Check className="w-3.5 h-3.5" />
+              Promo applied — {Number(promoValid.discountWei) / 1e18} tMSTC off per ticket
+            </p>
+          )}
+          {promoError && (
+            <p className="text-xs font-mono text-red-600">{promoError}</p>
+          )}
+        </div>
+      )}
 
       {/* Selection Actions */}
       {!soldOut && (

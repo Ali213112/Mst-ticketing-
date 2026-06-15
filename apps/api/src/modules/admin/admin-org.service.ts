@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { randomBytes } from 'crypto';
 import { ROLES } from '@ticketchain/shared';
 import { pool } from '../../shared/db/postgres.service.js';
+import { pinFileToIpfs } from '../../shared/ipfs/pinata.service.js';
 import {
   createInvite,
   expireStaleInvites,
@@ -19,17 +20,63 @@ const updateOrgSchema = z.object({
   name: z.string().min(2).max(255).optional(),
   description: z.string().max(5000).optional(),
   logoUrl: z.string().url().optional(),
+  bannerUrl: z.string().url().optional(),
   websiteUrl: z.string().url().optional(),
+  brandPrimaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  brandSecondaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  taxId: z.string().max(50).optional(),
+  gstNumber: z.string().max(50).optional(),
+  registrationNumber: z.string().max(100).optional(),
+  orgType: z.enum(['promoter', 'venue', 'university', 'sports', 'corporate', 'other']).optional(),
   country: z.string().max(100).optional(),
+  state: z.string().max(100).optional(),
   city: z.string().max(100).optional(),
+  postalCode: z.string().max(20).optional(),
+  founderPhone: z.string().max(20).optional(),
 });
+
+function inferMimeType(fileName: string, mimeType: string): string {
+  if (mimeType) return mimeType;
+  const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+  const map: Record<string, string> = {
+    pdf: 'application/pdf',
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    webp: 'image/webp',
+    gif: 'image/gif',
+  };
+  return map[ext] ?? 'application/octet-stream';
+}
+
+function isAllowedUploadMime(assetType: string, fileName: string, mimeType: string): boolean {
+  const mime = inferMimeType(fileName, mimeType);
+  if (assetType === 'kyc_document') {
+    return mime.startsWith('image/') || mime === 'application/pdf';
+  }
+  return mime.startsWith('image/');
+}
+
+const uploadImageSchema = z
+  .object({
+    fileName: z.string().min(1).max(255),
+    mimeType: z.string().optional().default(''),
+    contentBase64: z.string().min(1),
+    assetType: z.enum(['logo', 'banner', 'kyc_document']),
+  })
+  .refine((data) => isAllowedUploadMime(data.assetType, data.fileName, data.mimeType ?? ''), {
+    message: 'Invalid mime type for asset',
+  });
 
 const kycSubmitSchema = z.object({
   documents: z.array(
     z.object({
       type: z.enum(['registration_certificate', 'tax_id', 'id_proof', 'address_proof', 'other']),
       label: z.string().min(1).max(255),
-      url: z.string().url(),
+      url: z.string().min(1).refine(
+        (u) => u.startsWith('https://') || u.startsWith('http://') || u.startsWith('ipfs://'),
+        'Invalid document URL'
+      ),
     })
   ).min(1),
 });
@@ -37,6 +84,8 @@ const kycSubmitSchema = z.object({
 const inviteSchema = z.object({
   email: z.string().email(),
   role: z.union([z.literal(ROLES.ADMIN), z.literal(ROLES.VOLUNTEER)]),
+  eventId: z.string().uuid().optional(),
+  name: z.string().max(255).optional(),
 });
 
 const updateMemberSchema = z.object({
@@ -72,12 +121,28 @@ export async function adminUpdateOrganisation(orgId: string, body: unknown) {
   if (!parsed.success) return { error: 'Invalid request', status: 400 as const };
 
   const fields: Record<string, unknown> = {};
-  if (parsed.data.name !== undefined) fields.name = parsed.data.name;
-  if (parsed.data.description !== undefined) fields.description = parsed.data.description;
-  if (parsed.data.logoUrl !== undefined) fields.logo_url = parsed.data.logoUrl;
-  if (parsed.data.websiteUrl !== undefined) fields.website_url = parsed.data.websiteUrl;
-  if (parsed.data.country !== undefined) fields.country = parsed.data.country;
-  if (parsed.data.city !== undefined) fields.city = parsed.data.city;
+  const map: Record<string, string> = {
+    name: 'name',
+    description: 'description',
+    logoUrl: 'logo_url',
+    bannerUrl: 'banner_url',
+    websiteUrl: 'website_url',
+    brandPrimaryColor: 'brand_primary_color',
+    brandSecondaryColor: 'brand_secondary_color',
+    taxId: 'tax_id',
+    gstNumber: 'gst_number',
+    registrationNumber: 'registration_number',
+    orgType: 'org_type',
+    country: 'country',
+    state: 'state',
+    city: 'city',
+    postalCode: 'postal_code',
+    founderPhone: 'founder_phone',
+  };
+  for (const [key, col] of Object.entries(map)) {
+    const val = parsed.data[key as keyof typeof parsed.data];
+    if (val !== undefined) fields[col] = val;
+  }
 
   const org = await updateOrganisation(orgId, fields);
   if (!org) return { error: 'Organisation not found', status: 404 as const };
@@ -142,7 +207,9 @@ export async function adminInviteMember(
     orgId,
     invitedById,
     inviteeEmail: email,
+    inviteeName: parsed.data.name,
     roleToAssign: parsed.data.role,
+    eventId: parsed.data.eventId,
     inviteToken,
     expiresAt,
   });
@@ -187,6 +254,28 @@ export async function adminRemoveMember(orgId: string, memberId: string, request
   return { success: true };
 }
 
+export async function adminUploadOrgAsset(orgId: string, body: unknown) {
+  const parsed = uploadImageSchema.safeParse(body);
+  if (!parsed.success) return { error: 'Invalid upload payload', status: 400 as const };
+
+  const org = await findOrganisationById(orgId);
+  if (!org) return { error: 'Organisation not found', status: 404 as const };
+
+  const mimeType = inferMimeType(parsed.data.fileName, parsed.data.mimeType ?? '');
+  const buffer = Buffer.from(parsed.data.contentBase64, 'base64');
+  const pin = await pinFileToIpfs(parsed.data.fileName, buffer, mimeType);
+
+  if (parsed.data.assetType === 'kyc_document') {
+    return { url: pin.gatewayUrl, ipfsUri: pin.uri, asset: pin, status: 201 as const };
+  }
+
+  const field = parsed.data.assetType === 'logo' ? 'logo_url' : 'banner_url';
+  const updated = await updateOrganisation(orgId, { [field]: pin.gatewayUrl });
+  if (!updated) return { error: 'Failed to update organisation', status: 500 as const };
+
+  return { org: updated, asset: pin, status: 201 as const };
+}
+
 export async function adminListInvites(orgId: string) {
   const org = await findOrganisationById(orgId);
   if (!org) return { error: 'Organisation not found', status: 404 as const };
@@ -200,4 +289,5 @@ export {
   kycSubmitSchema,
   inviteSchema,
   updateMemberSchema,
+  uploadImageSchema,
 };

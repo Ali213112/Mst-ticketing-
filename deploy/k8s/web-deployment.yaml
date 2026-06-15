@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ticketchain-web
+  labels:
+    app: ticketchain-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ticketchain-web
+  template:
+    metadata:
+      labels:
+        app: ticketchain-web
+    spec:
+      containers:
+        - name: web
+          image: ticketchain/web:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: NEXT_PUBLIC_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: ticketchain-config
+                  key: API_URL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ticketchain-web
+spec:
+  selector:
+    app: ticketchain-web
+  ports:
+    - port: 80
+      targetPort: 3000

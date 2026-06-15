@@ -12,67 +12,54 @@ import {
   Plus,
   Loader2
 } from 'lucide-react';
-import { getMe, getPlatformTenants, updateTenantKyc, updateTenantCommission, createPlatformOrganisation, type AuthUser, type PlatformTenant } from '@/lib/api';
+import { getMe, getPlatformTenants, updateTenantKyc, updateTenantCommission, type AuthUser, type PlatformTenant } from '@/lib/api';
 import Sidebar from '@/components/layout/Sidebar';
-
-const MOCK_TENANTS: PlatformTenant[] = [
-  { id: 't-1', name: 'MST Events Group', slug: 'mst-events', subscriptionPlan: 'enterprise', status: 'active', verificationStatus: 'verified', platformCommissionBps: 200, country: 'India', city: 'Mumbai', createdAt: new Date().toISOString() },
-  { id: 't-2', name: 'Global Beats Inc.', slug: 'global-beats', subscriptionPlan: 'pro', status: 'pending_verification', verificationStatus: 'unverified', platformCommissionBps: 250, country: 'India', city: 'Delhi', createdAt: new Date().toISOString() },
-  { id: 't-3', name: 'Club Underground', slug: 'club-underground', subscriptionPlan: 'starter', status: 'suspended', verificationStatus: 'rejected', platformCommissionBps: 300, country: 'India', city: 'Pune', createdAt: new Date().toISOString() }
-];
+import CreateOrgWizard from '@/components/platform/CreateOrgWizard';
 
 export default function PlatformOrganisationsPage() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [tenants, setTenants] = useState<PlatformTenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   // Edit states
   const [selectedTenant, setSelectedTenant] = useState<PlatformTenant | null>(null);
   const [newCommission, setNewCommission] = useState<number>(200);
   const [updating, setUpdating] = useState(false);
 
-  // Create organization wizard states
   const [showCreateWizard, setShowCreateWizard] = useState(false);
-  const [createName, setCreateName] = useState('');
-  const [createSlug, setCreateSlug] = useState('');
-  const [createSuperAdminEmail, setCreateSuperAdminEmail] = useState('');
-  const [createCountry, setCreateCountry] = useState('India');
-  const [createCity, setCreateCity] = useState('Mumbai');
-  const [createPlan, setCreatePlan] = useState<'starter' | 'growth' | 'enterprise'>('starter');
-  const [creatingOrg, setCreatingOrg] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
 
   // Action feedback
   const [actionError, setActionError] = useState<string | null>(null);
+
+  const loadTenants = async () => {
+    setFetchError(null);
+    try {
+      const tenantsData = await getPlatformTenants();
+      setTenants(tenantsData);
+    } catch (err) {
+      setFetchError(err instanceof Error ? err.message : 'Failed to load organisations');
+    }
+  };
 
   useEffect(() => {
     void (async () => {
       try {
         const me = await getMe();
         if (!me || me.role !== 99) {
-          // Only block if the user was never authed at all
-          if (!user) {
-            setError('Insufficient permissions. Platform Admin role required.');
-          }
+          setError('Insufficient permissions. Platform Admin role required.');
           setLoading(false);
           return;
         }
         setUser(me);
-        setError(null); // Clear any previous network errors
-
-        const tenantsData = await getPlatformTenants().catch(() => MOCK_TENANTS);
-        setTenants(tenantsData.length > 0 ? tenantsData : MOCK_TENANTS);
+        await loadTenants();
       } catch {
-        // If the user was already authenticated, don't kick them out
-        if (!user) {
-          setError('Cannot connect to the API server. Please check that the backend is running.');
-        }
+        setError('Cannot connect to the API server. Please check that the backend is running.');
       } finally {
         setLoading(false);
       }
     })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleKycStatus = async (tenantId: string, action: 'verified' | 'suspended') => {
@@ -81,13 +68,13 @@ export default function PlatformOrganisationsPage() {
     setActionError(null);
     try {
       await updateTenantKyc(tenantId, action);
+      // Only update local state after the API confirms success
+      setTenants(prev => prev.map(t => t.id === tenantId ? { ...t, verificationStatus: newVerification, status: newStatus } : t));
+      if (selectedTenant?.id === tenantId) {
+        setSelectedTenant(prev => prev ? { ...prev, verificationStatus: newVerification, status: newStatus } : null);
+      }
     } catch (err) {
-      setActionError(`KYC update failed: ${err instanceof Error ? err.message : 'Network error — your change is saved locally but may not be persisted.'}`);
-    }
-    // Optimistic update — always update local state
-    setTenants(prev => prev.map(t => t.id === tenantId ? { ...t, verificationStatus: newVerification, status: newStatus } : t));
-    if (selectedTenant?.id === tenantId) {
-      setSelectedTenant(prev => prev ? { ...prev, verificationStatus: newVerification, status: newStatus } : null);
+      setActionError(`KYC update failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -104,30 +91,6 @@ export default function PlatformOrganisationsPage() {
     setUpdating(false);
   };
 
-  const handleCreateOrg = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreatingOrg(true);
-    setCreateError(null);
-    try {
-      const newOrg = await createPlatformOrganisation({
-        name: createName,
-        slug: createSlug || undefined,
-        superAdminEmail: createSuperAdminEmail,
-        country: createCountry,
-        city: createCity,
-        subscriptionPlan: createPlan,
-      });
-      setTenants(prev => [newOrg, ...prev]);
-      setShowCreateWizard(false);
-      setCreateName('');
-      setCreateSlug('');
-      setCreateSuperAdminEmail('');
-    } catch (err) {
-      setCreateError(err instanceof Error ? err.message : 'Failed to create organization. Ensure the founder email exists first.');
-    } finally {
-      setCreatingOrg(false);
-    }
-  };
 
   return (
     <div className="flex bg-zinc-50 min-h-screen">
@@ -163,7 +126,12 @@ export default function PlatformOrganisationsPage() {
             </div>
           ) : (
             <>
-              {/* Action error toast */}
+              {fetchError && (
+                <div className="bg-red-50 border border-red-200 rounded p-3 text-xs text-red-700 font-mono">
+                  {fetchError}
+                </div>
+              )}
+
               {actionError && (
                 <div className="bg-red-50 border border-red-200 rounded p-3 flex items-start justify-between">
                   <p className="text-xs text-red-700 font-mono">{actionError}</p>
@@ -201,6 +169,13 @@ export default function PlatformOrganisationsPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-50">
+                      {tenants.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="px-6 py-12 text-center text-xs font-mono text-zinc-400">
+                            No organisations registered yet. Create your first tenant above.
+                          </td>
+                        </tr>
+                      )}
                       {tenants.map((tenant) => (
                         <tr key={tenant.id} className="hover:bg-zinc-50/50 transition-colors">
                           <td className="px-6 py-4 font-bold text-zinc-950 uppercase">{tenant.name}</td>
@@ -324,137 +299,15 @@ export default function PlatformOrganisationsPage() {
         )}
       </AnimatePresence>
 
-      {/* Create Organisation Wizard Modal */}
-      <AnimatePresence>
-        {showCreateWizard && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4"
-            onClick={() => !creatingOrg && setShowCreateWizard(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white border border-zinc-200 rounded-lg w-full max-w-md p-6 space-y-4"
-            >
-              <div className="flex justify-between items-center">
-                <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-zinc-950">
-                  Create New Organisation
-                </h3>
-                <button onClick={() => setShowCreateWizard(false)} className="text-zinc-400 hover:text-zinc-900 transition-colors">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <form onSubmit={handleCreateOrg} className="space-y-3">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400">Organisation Name</label>
-                  <input
-                    type="text"
-                    value={createName}
-                    onChange={(e) => setCreateName(e.target.value)}
-                    placeholder="Global Concerts Co"
-                    className="w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-xs font-mono text-zinc-900 focus:outline-none focus:border-zinc-400 transition-colors"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400">Slug (Optional)</label>
-                  <input
-                    type="text"
-                    value={createSlug}
-                    onChange={(e) => setCreateSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                    placeholder="global-concerts"
-                    className="w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-xs font-mono text-zinc-900 focus:outline-none focus:border-zinc-400 transition-colors"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400">Founder Super Admin Email</label>
-                  <input
-                    type="email"
-                    value={createSuperAdminEmail}
-                    onChange={(e) => setCreateSuperAdminEmail(e.target.value)}
-                    placeholder="founder@example.com"
-                    className="w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-xs font-mono text-zinc-900 focus:outline-none focus:border-zinc-400 transition-colors"
-                    required
-                  />
-                  <p className="text-[9px] text-zinc-400 font-mono">
-                    * The founder must already be registered as a user on the platform.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400">Country</label>
-                    <input
-                      type="text"
-                      value={createCountry}
-                      onChange={(e) => setCreateCountry(e.target.value)}
-                      className="w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-xs font-mono text-zinc-900 focus:outline-none focus:border-zinc-400 transition-colors"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400">City</label>
-                    <input
-                      type="text"
-                      value={createCity}
-                      onChange={(e) => setCreateCity(e.target.value)}
-                      className="w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-xs font-mono text-zinc-900 focus:outline-none focus:border-zinc-400 transition-colors"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400">Subscription Plan</label>
-                  <div className="flex space-x-2">
-                    {(['starter', 'growth', 'enterprise'] as const).map((plan) => (
-                      <button
-                        key={plan}
-                        type="button"
-                        onClick={() => setCreatePlan(plan)}
-                        className={`flex-1 py-1.5 rounded text-[10px] font-mono font-bold uppercase border transition-colors ${
-                          createPlan === plan
-                            ? 'bg-zinc-900 text-white border-zinc-900'
-                            : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'
-                        }`}
-                      >
-                        {plan}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {createError && (
-                  <p className="text-xs text-red-650 font-mono bg-red-50 border border-red-100 p-2 rounded">
-                    {createError}
-                  </p>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={creatingOrg}
-                  className="w-full bg-zinc-900 text-white py-2.5 rounded text-xs font-mono font-bold hover:bg-zinc-800 disabled:opacity-40 transition-all flex items-center justify-center space-x-1"
-                >
-                  {creatingOrg ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Creating...</span>
-                    </>
-                  ) : (
-                    <span>Create Tenant Organisation</span>
-                  )}
-                </button>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {showCreateWizard && (
+        <CreateOrgWizard
+          onClose={() => setShowCreateWizard(false)}
+          onCreated={(org) => {
+            setTenants((prev) => [org, ...prev]);
+            void loadTenants();
+          }}
+        />
+      )}
     </div>
   );
 }

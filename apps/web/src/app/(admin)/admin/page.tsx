@@ -15,13 +15,14 @@ import {
   LayoutDashboard,
   ArrowRight
 } from 'lucide-react';
-import { getMe, getAdminOrganisation, getAdminEvents, type AuthUser, type AdminOrgDetails, type AdminEventSummary } from '@/lib/api';
+import { getMe, getAdminOrganisation, getAdminEvents, getOnboardingStatus, type AuthUser, type AdminOrgDetails, type AdminEventSummary, type OnboardingStatus } from '@/lib/api';
 import Sidebar from '@/components/layout/Sidebar';
 
 export default function AdminDashboardPage() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [org, setOrg] = useState<AdminOrgDetails | null>(null);
   const [events, setEvents] = useState<AdminEventSummary[]>([]);
+  const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,22 +37,15 @@ export default function AdminDashboardPage() {
         }
         setUser(me);
 
-        const [orgData, eventsData] = await Promise.all([
-          getAdminOrganisation().catch(() => ({
-            id: 'org-id-001',
-            name: 'MST Events Group',
-            slug: 'mst-events',
-            description: 'Local concert and sports organization',
-            logoUrl: null,
-            subscriptionPlan: 'starter',
-            status: 'active',
-            platformCommissionBps: 200
-          }) as AdminOrgDetails),
-          getAdminEvents().catch(() => [] as AdminEventSummary[])
+        const [orgData, eventsData, onboardingData] = await Promise.all([
+          getAdminOrganisation(),
+          getAdminEvents().catch(() => [] as AdminEventSummary[]),
+          getOnboardingStatus().catch(() => null),
         ]);
 
         setOrg(orgData);
         setEvents(eventsData);
+        setOnboarding(onboardingData);
       } catch (err) {
         console.error(org, err);
         setError('Failed to load admin dashboard.');
@@ -101,6 +95,44 @@ export default function AdminDashboardPage() {
             </div>
           ) : (
             <>
+              {onboarding && !onboarding.readyForEvents && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-white border border-amber-200 rounded p-6 space-y-4"
+                >
+                  <div className="flex justify-between items-start gap-4">
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-mono font-bold uppercase text-zinc-950">Setup checklist</h3>
+                      <p className="text-xs text-zinc-500">Complete onboarding before deploying events.</p>
+                    </div>
+                    <Link
+                      href="/admin/onboarding"
+                      className="text-xs font-mono font-bold bg-zinc-900 text-white px-3 py-1.5 rounded shrink-0"
+                    >
+                      Continue setup
+                    </Link>
+                  </div>
+                  <ul className="grid grid-cols-2 md:grid-cols-5 gap-2 text-[10px] font-mono">
+                    <li className={onboarding.profileComplete ? 'text-green-700' : 'text-zinc-400'}>
+                      {onboarding.profileComplete ? '✓' : '○'} Profile ({onboarding.profilePercent}%)
+                    </li>
+                    <li className={onboarding.kycSubmitted ? 'text-green-700' : 'text-zinc-400'}>
+                      {onboarding.kycSubmitted ? '✓' : '○'} KYC submitted
+                    </li>
+                    <li className={onboarding.kycVerified ? 'text-green-700' : 'text-zinc-400'}>
+                      {onboarding.kycVerified ? '✓' : '○'} KYC verified
+                    </li>
+                    <li className={onboarding.walletConfirmed ? 'text-green-700' : 'text-zinc-400'}>
+                      {onboarding.walletConfirmed ? '✓' : '○'} Wallet
+                    </li>
+                    <li className={onboarding.teamInvited ? 'text-green-700' : 'text-zinc-400'}>
+                      {onboarding.teamInvited ? '✓' : '○'} Team invited
+                    </li>
+                  </ul>
+                </motion.div>
+              )}
+
               {/* Org banner */}
               {org && (
                 <motion.div

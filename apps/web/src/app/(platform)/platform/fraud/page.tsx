@@ -13,16 +13,12 @@ import {
 import { getMe, getPlatformFraudAlerts, toggleWalletBlacklist, type AuthUser, type FraudAlert } from '@/lib/api';
 import Sidebar from '@/components/layout/Sidebar';
 
-const MOCK_ALERTS: FraudAlert[] = [
-  { id: 'a-1', ticketId: 't-12903', eventName: 'Techno Night Delhi', severity: 'high', message: 'Double Scan Detected: ticket ID used twice within 3 seconds', timestamp: '2025-05-31T20:15:30Z', walletAddress: '0x32A78dDcd9592fBbf921c324dfb5B054Dcf3ab4D', blacklisted: false },
-  { id: 'a-2', ticketId: 't-44910', eventName: 'NFT Art Expo', severity: 'medium', message: 'High Frequency Requests: wallet querying QR payload too fast', timestamp: '2025-05-31T18:40:12Z', walletAddress: '0x1F2A7dDcd9592fBbf921c324dfb5B054Dcf9aB12', blacklisted: true }
-];
-
 export default function PlatformFraudPage() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [alerts, setAlerts] = useState<FraudAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -36,8 +32,12 @@ export default function PlatformFraudPage() {
         }
         setUser(me);
 
-        const data = await getPlatformFraudAlerts().catch(() => MOCK_ALERTS);
-        setAlerts(data.length > 0 ? data : MOCK_ALERTS);
+        try {
+          const data = await getPlatformFraudAlerts();
+          setAlerts(data);
+        } catch (err) {
+          setFetchError(err instanceof Error ? err.message : 'Failed to load fraud alerts');
+        }
       } catch {
         setError('Failed to load fraud logs.');
       } finally {
@@ -95,7 +95,13 @@ export default function PlatformFraudPage() {
             </div>
           ) : (
             <>
-              {/* Search Bar */}
+              {fetchError && (
+                <div className="bg-red-50 border border-red-100 text-red-700 text-xs font-mono p-3 rounded flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  {fetchError}
+                </div>
+              )}
+
               <div className="relative">
                 <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-400" />
                 <input
@@ -118,7 +124,9 @@ export default function PlatformFraudPage() {
                 <div className="divide-y divide-zinc-100">
                   {filteredAlerts.length === 0 ? (
                     <div className="p-12 text-center text-xs font-mono text-zinc-400">
-                      No security alerts match current filter.
+                      {alerts.length === 0
+                        ? 'No unresolved fraud alerts. Security events will appear here when detected.'
+                        : 'No security alerts match current filter.'}
                     </div>
                   ) : (
                     filteredAlerts.map((alert) => (

@@ -1,5 +1,10 @@
 import type { Request, Response } from 'express';
-import { browseEventDetail, browseEvents } from '../admin/admin-event.service.js';
+import { browseEventDetail, browseEvents, browseFeaturedEvents } from '../admin/admin-event.service.js';
+
+export async function listFeaturedEventsHandler(_req: Request, res: Response): Promise<void> {
+  const result = await browseFeaturedEvents();
+  res.json({ success: true, data: result.rows });
+}
 
 export async function listEventsHandler(req: Request, res: Response): Promise<void> {
   const result = await browseEvents(req.query as Record<string, string | undefined>);

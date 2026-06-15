@@ -10,11 +10,13 @@
     "lint": "echo \"no lint configured\""
   },
   "dependencies": {
+    "@ducanh2912/next-pwa": "^10.2.9",
     "@web3auth/auth-adapter": "^9.7.0",
     "@web3auth/base": "^9.7.0",
     "@web3auth/ethereum-provider": "^9.7.0",
     "@web3auth/no-modal": "^9.7.0",
     "framer-motion": "^12.40.0",
+    "jsqr": "^1.4.0",
     "lucide-react": "^1.17.0",
     "next": "^14.2.24",
     "react": "^18.3.1",

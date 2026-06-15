@@ -27,9 +27,11 @@ export default function Navbar() {
     { name: 'Events', href: '/events', icon: Calendar },
     { name: 'Marketplace', href: '/marketplace', icon: ShoppingBag },
     { name: 'My Tickets', href: '/tickets', icon: Ticket },
+    ...(user ? [{ name: 'Profile', href: '/profile', icon: User }] : []),
   ];
 
   const isActive = (href: string) => pathname.startsWith(href);
+  const isLoginPage = pathname === '/login';
 
   return (
     <nav className="bg-white border-b border-zinc-200 sticky top-0 z-50">
@@ -73,17 +75,9 @@ export default function Navbar() {
 
             {user ? (
               <div className="flex items-center space-x-3">
-                <Link
-                  href="/profile"
-                  className={`flex items-center space-x-1.5 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                    isActive('/profile')
-                      ? 'bg-zinc-100 text-zinc-900'
-                      : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50'
-                  }`}
-                >
-                  <User className="w-4 h-4" />
-                  <span className="max-w-[120px] truncate">{user.email}</span>
-                </Link>
+                <span className="text-xs font-mono text-zinc-500 max-w-[140px] truncate hidden lg:inline">
+                  {user.email}
+                </span>
 
                 {/* Dashboard Shortcuts based on roles */}
                 {user.role >= 2 && ( // Admin or Super Admin
@@ -111,14 +105,14 @@ export default function Navbar() {
                   </Link>
                 )}
               </div>
-            ) : (
+            ) : !isLoginPage ? (
               <Link
                 href="/login"
                 className="flex items-center space-x-1 px-4 py-1.5 rounded border border-zinc-900 text-zinc-900 hover:bg-zinc-900 hover:text-white text-sm font-medium transition-colors"
               >
                 <span>Sign In</span>
               </Link>
-            )}
+            ) : null}
           </div>
 
           {/* Mobile Menu Button */}
@@ -162,14 +156,7 @@ export default function Navbar() {
 
           {user ? (
             <div className="space-y-1">
-              <Link
-                href="/profile"
-                onClick={() => setIsOpen(false)}
-                className="flex items-center space-x-2 px-3 py-2 rounded-md text-base font-medium text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
-              >
-                <User className="w-5 h-5" />
-                <span>Profile ({user.email})</span>
-              </Link>
+              <p className="px-3 py-1 text-[10px] font-mono text-zinc-400 truncate">{user.email}</p>
               {user.role >= 2 && (
                 <Link
                   href="/admin"
@@ -189,7 +176,7 @@ export default function Navbar() {
                 </Link>
               )}
             </div>
-          ) : (
+          ) : !isLoginPage ? (
             <Link
               href="/login"
               onClick={() => setIsOpen(false)}
@@ -197,7 +184,7 @@ export default function Navbar() {
             >
               Sign In
             </Link>
-          )}
+          ) : null}
         </motion.div>
       )}
     </nav>

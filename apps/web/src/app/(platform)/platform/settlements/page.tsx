@@ -11,16 +11,22 @@ import {
 import { getMe, getPlatformSettlements, approvePlatformSettlement, type AuthUser, type PlatformSettlement } from '@/lib/api';
 import Sidebar from '@/components/layout/Sidebar';
 
-const MOCK_SETTLEMENTS: PlatformSettlement[] = [
-  { id: 's-1', eventId: 'e-1', eventName: 'Techno Night Delhi', organisationName: 'MST Events Group', grossRevenueWei: '120000000000000000000', commissionWei: '2400000000000000000', netPayoutWei: '117600000000000000000', status: 'pending' },
-  { id: 's-2', eventId: 'e-2', eventName: 'NFT Art Expo', organisationName: 'Global Beats Inc.', grossRevenueWei: '85000000000000000000', commissionWei: '2125000000000000000', netPayoutWei: '82875000000000000000', status: 'completed' }
-];
-
 export default function PlatformSettlementsPage() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [settlements, setSettlements] = useState<PlatformSettlement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const loadSettlements = async () => {
+    setFetchError(null);
+    try {
+      const data = await getPlatformSettlements();
+      setSettlements(data);
+    } catch (err) {
+      setFetchError(err instanceof Error ? err.message : 'Failed to load settlements');
+    }
+  };
 
   useEffect(() => {
     void (async () => {
@@ -32,9 +38,7 @@ export default function PlatformSettlementsPage() {
           return;
         }
         setUser(me);
-
-        const data = await getPlatformSettlements().catch(() => MOCK_SETTLEMENTS);
-        setSettlements(data.length > 0 ? data : MOCK_SETTLEMENTS);
+        await loadSettlements();
       } catch {
         setError('Failed to load settlements.');
       } finally {
@@ -88,7 +92,13 @@ export default function PlatformSettlementsPage() {
             </div>
           ) : (
             <>
-              {/* Settlements Table */}
+              {fetchError && (
+                <div className="bg-red-50 border border-red-100 text-red-700 text-xs font-mono p-3 rounded flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  {fetchError}
+                </div>
+              )}
+
               <div className="bg-white border border-zinc-200 rounded overflow-hidden">
                 <div className="px-6 py-4 border-b border-zinc-100">
                   <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-zinc-400">Pending & Settled Payouts</h3>
@@ -106,6 +116,13 @@ export default function PlatformSettlementsPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-50">
+                      {settlements.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-12 text-center text-xs font-mono text-zinc-400">
+                            No settlement records yet. Payouts appear here after events generate revenue.
+                          </td>
+                        </tr>
+                      )}
                       {settlements.map((settlement) => (
                         <tr key={settlement.id} className="hover:bg-zinc-50/50 transition-colors">
                           <td className="px-6 py-4 space-y-0.5">

@@ -13,7 +13,7 @@ import {
   AlertCircle,
   LayoutDashboard
 } from 'lucide-react';
-import { getMe, getAdminMembers, inviteAdminMember, type AuthUser, type AdminMember } from '@/lib/api';
+import { getMe, getAdminMembers, getAdminEvents, inviteAdminMember, type AuthUser, type AdminMember, type AdminEventSummary } from '@/lib/api';
 import Sidebar from '@/components/layout/Sidebar';
 
 const ROLE_LABELS: Record<number, string> = { 1: 'Volunteer', 2: 'Admin', 3: 'Super Admin' };
@@ -33,13 +33,15 @@ const MOCK_MEMBERS: AdminMember[] = [
 export default function AdminMembersPage() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [members, setMembers] = useState<AdminMember[]>([]);
+  const [events, setEvents] = useState<AdminEventSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Invite modal state
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteName, setInviteName] = useState('');
   const [inviteRole, setInviteRole] = useState(1);
+  const [inviteEventId, setInviteEventId] = useState('');
   const [inviting, setInviting] = useState(false);
   const [inviteSuccess, setInviteSuccess] = useState(false);
 
@@ -53,8 +55,12 @@ export default function AdminMembersPage() {
           return;
         }
         setUser(me);
-        const data = await getAdminMembers().catch(() => MOCK_MEMBERS);
+        const [data, eventsData] = await Promise.all([
+          getAdminMembers().catch(() => MOCK_MEMBERS),
+          getAdminEvents().catch(() => [] as AdminEventSummary[]),
+        ]);
         setMembers(data.length > 0 ? data : MOCK_MEMBERS);
+        setEvents(eventsData);
       } catch {
         setError('Failed to load members.');
       } finally {
@@ -67,7 +73,12 @@ export default function AdminMembersPage() {
     if (!inviteEmail.trim()) return;
     setInviting(true);
     try {
-      await inviteAdminMember({ email: inviteEmail.trim(), role: inviteRole });
+      await inviteAdminMember({
+        email: inviteEmail.trim(),
+        name: inviteName.trim() || undefined,
+        role: inviteRole,
+        eventId: inviteRole === 1 && inviteEventId ? inviteEventId : undefined,
+      });
     } catch {
       // Fallback: add locally
     }
@@ -87,6 +98,8 @@ export default function AdminMembersPage() {
       setInviting(false);
       setInviteSuccess(false);
       setInviteEmail('');
+      setInviteName('');
+      setInviteEventId('');
       setShowInvite(false);
     }, 1200);
   };
@@ -263,6 +276,17 @@ export default function AdminMembersPage() {
                 <>
                   <div className="space-y-3">
                     <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400">Name (optional)</label>
+                      <input
+                        type="text"
+                        value={inviteName}
+                        onChange={(e) => setInviteName(e.target.value)}
+                        placeholder="Jane Doe"
+                        className="w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-xs font-mono text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:border-zinc-400 transition-colors"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
                       <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400">Email Address</label>
                       <input
                         type="email"
@@ -294,6 +318,23 @@ export default function AdminMembersPage() {
                         ))}
                       </div>
                     </div>
+
+                    {inviteRole === 1 && events.length > 0 && (
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400">Event scope (optional)</label>
+                        <select
+                          value={inviteEventId}
+                          onChange={(e) => setInviteEventId(e.target.value)}
+                          className="w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-xs font-mono text-zinc-900 focus:outline-none focus:border-zinc-400"
+                        >
+                          <option value="">All events</option>
+                          {events.map((ev) => (
+                            <option key={ev.id} value={ev.id}>{ev.name}</option>
+                          ))}
+                        </select>
+                        <p className="text-[9px] text-zinc-400">Limit volunteer scan access to a specific event.</p>
+                      </div>
+                    )}
                   </div>
 
                   <button

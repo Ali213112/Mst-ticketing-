@@ -30,6 +30,11 @@ const envSchema = z.object({
 
   MST_DEPLOYER_PRIVATE_KEY: z.string().min(1).optional(),
   ORG_REGISTRY_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+  MARKETPLACE_CONTRACT_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+
+  SARAL_APP_ID: z.string().optional(),
+  SARAL_APP_SECRET: z.string().optional(),
+  SARAL_ENVIRONMENT: z.enum(['testnet', 'mainnet']).optional(),
 
   PINATA_API_KEY: z.string().optional(),
   PINATA_SECRET_KEY: z.string().optional(),

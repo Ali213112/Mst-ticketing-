@@ -1,43 +1,56 @@
 /**
- * worker.ts — BullMQ / background job entry point
+ * worker.ts — BullMQ background job entry point
  *
- * Start with:  pnpm --filter api run worker:dev
- *
- * Jobs scheduled here:
- *  1. Orphan Reconciliation  — every 5 minutes
- *     Finds mint_idempotency records stuck in 'pending'/'failed' and fixes them.
- *
- * Future jobs to add here (Step 10):
- *  2. Email confirmation     — triggered per ticket purchase
- *  3. Blockchain tx polling  — verifies on-chain finality
- *  4. Settlement payouts     — nightly batch
+ * Start with:  pnpm --filter @ticketchain/api worker:dev
  */
 
 import 'dotenv/config';
+import type { Job } from 'bullmq';
+import {
+  createWorker,
+  JOB_NAMES,
+  scheduleRecurringJobs,
+} from './shared/queue/queue.service.js';
 import { runOrphanReconciliation } from './workers/orphan-reconcile.worker.js';
 
-const ORPHAN_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+async function processJob(job: Job): Promise<void> {
+  switch (job.name) {
+    case JOB_NAMES.ORPHAN_RECONCILE:
+      await runOrphanReconciliation();
+      break;
+    default:
+      console.warn(`[worker] Unknown job: ${job.name}`);
+  }
+}
 
 async function startWorker(): Promise<void> {
-  console.log('🔧 TicketChain Worker starting...');
+  console.log('TicketChain Worker starting (BullMQ)...');
 
-  // ── 1. Orphan Reconciliation ──────────────────────────────────────────────
-  // Run immediately on startup, then every 5 minutes
-  console.log('[worker] Scheduling orphan reconciliation (every 5 min)');
+  const worker = createWorker(async (job) => {
+    try {
+      await processJob(job);
+    } catch (err) {
+      console.error(`[worker] Job ${job.name} failed:`, err);
+      throw err;
+    }
+  });
+
+  worker.on('completed', (job) => {
+    console.log(`[worker] Job ${job.name} completed`);
+  });
+
+  worker.on('failed', (job, err) => {
+    console.error(`[worker] Job ${job?.name ?? 'unknown'} failed:`, err.message);
+  });
+
+  await scheduleRecurringJobs();
   await runOrphanReconciliation().catch((err: unknown) => {
     console.error('[worker] Initial orphan reconciliation failed:', err);
   });
 
-  setInterval(() => {
-    void runOrphanReconciliation().catch((err: unknown) => {
-      console.error('[worker] Orphan reconciliation error:', err);
-    });
-  }, ORPHAN_INTERVAL_MS);
-
-  console.log('✅ TicketChain Worker running. Press Ctrl+C to stop.');
+  console.log('TicketChain Worker running. Press Ctrl+C to stop.');
 }
 
-// Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('[worker] SIGTERM received — shutting down gracefully.');
   process.exit(0);

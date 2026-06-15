@@ -9,22 +9,44 @@ import {
   Gift,
   Copy,
   Check,
-  Coins,
   Share2,
-  Shield,
   Calendar,
   AlertCircle,
-  ArrowRight
+  ArrowRight,
+  Settings,
+  LogOut,
+  Loader2,
 } from 'lucide-react';
-import { getMe, listMyRewards, getReferralStats, type AuthUser, type LoyaltyReward, type ReferralStats } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import {
+  getMe,
+  listMyRewards,
+  getReferralStats,
+  updateProfile,
+  logoutSession,
+  type AuthUser,
+  type LoyaltyReward,
+  type ReferralStats,
+} from '@/lib/api';
 import Navbar from '@/components/layout/Navbar';
 
 export default function ProfilePage() {
+  const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [rewards, setRewards] = useState<LoyaltyReward[]>([]);
   const [referral, setReferral] = useState<ReferralStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+
+  const inputClass =
+    'w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-xs font-mono text-zinc-900 focus:outline-none focus:border-zinc-400';
+  const labelClass = 'text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400';
 
   useEffect(() => {
     void (async () => {
@@ -32,6 +54,9 @@ export default function ProfilePage() {
         const currentUser = await getMe();
         if (currentUser) {
           setUser(currentUser);
+          setFirstName(currentUser.firstName ?? '');
+          setLastName(currentUser.lastName ?? '');
+          setPhoneNumber(currentUser.phoneNumber ?? '');
           const [rewardsData, refData] = await Promise.all([
             listMyRewards().catch(() => [] as LoyaltyReward[]),
             getReferralStats().catch(() => null)
@@ -53,6 +78,32 @@ export default function ProfilePage() {
     void navigator.clipboard.writeText(link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || user.role === 99) return;
+    setSaving(true);
+    setSettingsError(null);
+    setSaved(false);
+    try {
+      const updated = await updateProfile({ firstName, lastName, phoneNumber });
+      setUser((prev) => (prev ? { ...prev, ...updated } : prev));
+      setSaved(true);
+    } catch (err) {
+      setSettingsError(err instanceof Error ? err.message : 'Failed to save settings');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logoutSession();
+    } catch {
+      // ignore
+    }
+    router.push('/login');
   };
 
   const getRoleName = (role: number) => {
@@ -112,9 +163,52 @@ export default function ProfilePage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {/* Left Column: User details */}
               <div className="md:col-span-1 space-y-6">
-                {/* Profile Card */}
+                {user.role !== 99 && (
+                  <form onSubmit={(e) => void handleSaveSettings(e)} className="bg-white border border-zinc-200 rounded p-6 space-y-4">
+                    <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-zinc-400 flex items-center space-x-1.5">
+                      <Settings className="w-4 h-4" />
+                      <span>Account settings</span>
+                    </h3>
+
+                    <div className="space-y-1">
+                      <label className={labelClass}>Email</label>
+                      <input className={`${inputClass} opacity-60`} value={user.email} readOnly />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className={labelClass}>First name</label>
+                        <input className={inputClass} value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className={labelClass}>Last name</label>
+                        <input className={inputClass} value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className={labelClass}>Phone number</label>
+                      <input className={inputClass} value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="+919876543210" />
+                    </div>
+
+                    {settingsError && (
+                      <p className="text-xs text-red-600 font-mono">{settingsError}</p>
+                    )}
+                    {saved && (
+                      <p className="text-xs text-green-700 font-mono">Settings saved.</p>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="w-full bg-zinc-900 text-white py-2 rounded text-xs font-mono font-bold disabled:opacity-40 flex items-center justify-center gap-2"
+                    >
+                      {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save settings'}
+                    </button>
+                  </form>
+                )}
+
                 <div className="bg-white border border-zinc-200 rounded p-6 space-y-4">
                   <div className="flex items-center space-x-3">
                     <div className="h-10 w-10 bg-zinc-100 rounded-full flex items-center justify-center text-zinc-800 border border-zinc-200">
@@ -147,6 +241,15 @@ export default function ProfilePage() {
                       </span>
                     </div>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void handleLogout()}
+                    className="w-full flex items-center justify-center gap-2 py-2 border border-zinc-200 text-zinc-600 rounded text-xs font-mono font-bold hover:bg-zinc-50 transition-colors"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    Log out
+                  </button>
                 </div>
 
                 {/* Referral stats */}
@@ -207,7 +310,7 @@ export default function ProfilePage() {
                   <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
                     <h2 className="text-sm font-mono font-bold uppercase tracking-wider text-zinc-400 flex items-center space-x-1.5">
                       <Award className="w-4 h-4" />
-                      <span>Loyalty Badge &amp; Reward escrow</span>
+                      <span>Post-event collectibles gallery</span>
                     </h2>
                     <span className="text-xs text-zinc-500 font-mono font-semibold">
                       {rewards.length} Collected

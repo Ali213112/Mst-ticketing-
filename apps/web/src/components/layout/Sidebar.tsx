@@ -15,7 +15,10 @@ import {
   Tag,
   ArrowLeft,
   Shield,
-  FileCheck
+  FileCheck,
+  Ticket,
+  Link2,
+  Palette,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -28,13 +31,21 @@ export default function Sidebar({ type }: SidebarProps) {
   const platformItems = [
     { name: 'Overview', href: '/platform', icon: LayoutDashboard },
     { name: 'Organisations', href: '/platform/organisations', icon: Building2 },
+    { name: 'Events', href: '/platform/events', icon: Calendar },
+    { name: 'Tickets', href: '/platform/tickets', icon: Ticket },
     { name: 'Settlements', href: '/platform/settlements', icon: CreditCard },
+    { name: 'Refunds', href: '/platform/refunds', icon: CreditCard },
     { name: 'Fraud Alerts', href: '/platform/fraud', icon: AlertTriangle },
     { name: 'Audit Logs', href: '/platform/audit', icon: History },
+    { name: 'Platform Staff', href: '/platform/admins', icon: Users },
+    { name: 'Blockchain', href: '/platform/blockchain', icon: Link2 },
   ];
 
   const adminItems = [
     { name: 'Overview', href: '/admin', icon: LayoutDashboard },
+    { name: 'Onboarding', href: '/admin/onboarding', icon: FileCheck },
+    { name: 'Settings', href: '/admin/settings', icon: Shield },
+    { name: 'Branding', href: '/admin/branding', icon: Palette },
     { name: 'Events', href: '/admin/events', icon: Calendar },
     { name: 'Venues', href: '/admin/venues', icon: MapPin },
     { name: 'Members & Roles', href: '/admin/members', icon: Users },

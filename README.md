@@ -1,6 +1,6 @@
 # TicketChain MST
 
-NFT ticketing platform on MST Blockchain — monorepo scaffold (Steps 0–2).
+Enterprise NFT ticketing platform on the MST Blockchain — multi-tenant SaaS monorepo.
 
 ## Prerequisites
 
@@ -25,13 +25,16 @@ pnpm --filter @ticketchain/shared build
 pnpm migrate
 pnpm seed
 
-# 5. Start API
-pnpm dev:api
+# 5. Generate JWT keys (first time)
+pnpm --filter @ticketchain/api generate:keys
+
+# 6. Start services (separate terminals)
+pnpm dev:api          # API on http://localhost:5000
+pnpm dev:web          # Web on http://localhost:3000
+pnpm --filter @ticketchain/api worker:dev   # BullMQ background worker
 ```
 
-API: http://localhost:5000  
-Health: http://localhost:5000/health  
-Web (placeholder): http://localhost:3000 — run `pnpm dev:web`
+Health: http://localhost:5000/health
 
 ## Docker services
 
@@ -45,21 +48,35 @@ Web (placeholder): http://localhost:3000 — run `pnpm dev:web`
 | Role            | Email                   | Password      |
 |-----------------|-------------------------|---------------|
 | Platform admin  | admin@ticketchain.com   | ChangeMe123!  |
-| Org super admin | founder@demo-org.com    | SARAL (mock)  |
+| Org super admin | founder@demo-org.com    | Web3Auth      |
 
 Organisation slug: `demo-events`
 
 ## Project structure
 
 ```
-apps/api          Express API + migrations
-apps/web          Next.js (placeholder)
-packages/shared   Shared types & constants
-## Step 3 — Smart contracts
+apps/api          Express API + migrations + BullMQ worker
+apps/web          Next.js 14 App Router (consumer, admin, platform, scanner PWA)
+packages/shared   Shared TypeScript types & constants
+packages/contracts Hardhat — EventTickets1155, OrgRegistry, TicketMarketplace
+deploy/k8s        Kubernetes manifests (API, web, worker)
+docs/             AUTH.md — Web3Auth vs SARAL strategy
+```
+
+## Web application routes
+
+| Area | Routes |
+|------|--------|
+| Consumer | `/`, `/events`, `/tickets`, `/marketplace`, `/profile` |
+| Volunteer scanner (PWA) | `/checkin`, `/checkin/[eventId]` |
+| Org admin | `/admin`, `/admin/events`, `/admin/members`, `/admin/finance` |
+| Platform admin | `/platform`, `/platform/organisations`, `/platform/settlements`, `/platform/fraud`, `/platform/audit` |
+
+## Smart contracts
 
 ```bash
 pnpm contracts:compile          # Compile + copy ABIs to apps/api
-pnpm contracts:test             # Run Hardhat tests (7 tests)
+pnpm contracts:test             # Hardhat tests
 pnpm contracts:deploy:local     # Deploy to in-memory Hardhat network
 pnpm contracts:deploy:testnet   # Deploy OrgRegistry to MST testnet
 ```
@@ -68,49 +85,57 @@ pnpm contracts:deploy:testnet   # Deploy OrgRegistry to MST testnet
 |----------|---------|
 | `EventTickets1155` | ERC-1155 + EIP-2981 NFT tickets (one per event) |
 | `OrgRegistry` | Registers org wallets on-chain |
+| `TicketMarketplace` | On-chain resale with price cap enforcement |
 
-Deployed testnet `OrgRegistry`: see `packages/contracts/deployments/mstTestnet.json`
+Set `MARKETPLACE_CONTRACT_ADDRESS` in `.env` after deploying the marketplace contract.
 
-## Step 4 — Web3Auth authentication
+## Authentication
 
-**Backend** (`POST /api/auth/verify`):
-- Validates Web3Auth `idToken` via JWKS (`https://api-auth.web3auth.io/jwks`)
-- Creates/updates user by `web3auth_sub`
-- Issues platform JWT in httpOnly cookies (15min access + 7d refresh in Redis)
+- **Consumers / org members:** Web3Auth (`POST /api/auth/verify`) — see [docs/AUTH.md](docs/AUTH.md)
+- **Platform staff:** Email + password (`POST /api/auth/platform-login`)
 
-**Frontend** (`/login`):
-- Email passwordless + SMS via `@web3auth/no-modal`
-- Sends `idToken` + wallet address to backend
+## API highlights
 
-**Setup:**
-1. Create a project at [dashboard.web3auth.io](https://dashboard.web3auth.io)
-2. Enable Email Passwordless + SMS login
-3. Add custom chain: MST Testnet (your `MST_CHAIN_ID` + RPC)
-4. Set in `.env`:
-   - `WEB3AUTH_CLIENT_ID` (backend)
-   - `NEXT_PUBLIC_WEB3AUTH_CLIENT_ID` (frontend — same value)
-5. Generate JWT keys: `pnpm --filter @ticketchain/api generate:keys`
-6. Run migration 016: `pnpm migrate`
-
-**Auth endpoints:**
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/auth/verify` | Web3Auth login |
-| POST | `/api/auth/refresh` | Rotate session |
-| POST | `/api/auth/logout` | Clear session |
-| GET | `/api/auth/me` | Current user |
-| POST | `/api/auth/platform-login` | Platform admin (email/password) |
-
+```
+POST /api/tickets/:id/transfer     Gift ticket to email or wallet
+POST /api/tickets/:id/resell       List on resale marketplace
+GET  /api/marketplace              Browse active listings
+POST /api/marketplace/:id/buy      Purchase resale listing
+GET  /api/platform/kpis            Platform dashboard metrics
+GET  /api/platform/settlements     Settlement batches
+GET  /api/platform/fraud           Fraud alerts
+GET  /api/platform/audit           Audit log feed
+GET  /api/admin/finance/earnings   Org earnings summary
+GET  /api/profile/rewards          Loyalty rewards
+GET  /api/profile/referral         Referral stats
 ```
 
 ## Scripts
 
-| Command        | Description              |
-|----------------|--------------------------|
+| Command | Description |
+|---------|-------------|
 | `pnpm docker:up` | Start Postgres + Redis |
-| `pnpm migrate` | Run DB migrations        |
-| `pnpm seed`    | Insert dev seed data     |
-| `pnpm dev:api` | Start API on port 5000   |
+| `pnpm migrate` | Run DB migrations |
+| `pnpm seed` | Insert dev seed data |
+| `pnpm dev:api` | Start API on port 5000 |
+| `pnpm dev:web` | Start Next.js on port 3000 |
+| `pnpm typecheck` | Type-check all packages |
+| `pnpm contracts:test` | Run Solidity tests |
 
-Blockchain: [@mstblockchain/mst-sdk](https://www.npmjs.com/package/@mstblockchain/mst-sdk) — testnet RPC in `.env`.
+## Production deployment
+
+```bash
+# Build container images
+docker build -f apps/api/Dockerfile -t ticketchain/api:latest .
+docker build -f apps/web/Dockerfile -t ticketchain/web:latest .
+
+# Apply Kubernetes manifests
+kubectl apply -f deploy/k8s/
+```
+
+## Documentation
+
+- [TICKETCHAIN_MASTER_SPEC.md](TICKETCHAIN_MASTER_SPEC.md) — full architecture specification
+- [docs/AUTH.md](docs/AUTH.md) — authentication strategy
+
+Blockchain SDK: [@mstblockchain/mst-sdk](https://www.npmjs.com/package/@mstblockchain/mst-sdk)

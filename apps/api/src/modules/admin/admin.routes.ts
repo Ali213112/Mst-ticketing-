@@ -23,6 +23,9 @@ import {
   updateTierHandler,
   uploadBannerHandler,
   uploadTierImageHandler,
+  getEventAnalyticsHandler,
+  listEventCheckinsHandler,
+  listEventTicketsHandler,
 } from './admin-event.controller.js';
 import {
   getOrganisationHandler,
@@ -33,7 +36,27 @@ import {
   submitKycHandler,
   updateMemberHandler,
   updateOrganisationHandler,
+  uploadOrgAssetHandler,
 } from './admin-org.controller.js';
+import {
+  confirmWalletHandler,
+  getOnboardingStatusHandler,
+} from './admin-onboarding.controller.js';
+import { getOrgEarnings } from './admin-finance.service.js';
+import {
+  createVenueHandler,
+  deleteVenueHandler,
+  listVenuesHandler,
+  updateVenueHandler,
+} from './admin-venue.controller.js';
+import {
+  createPromoCodeHandler,
+  deletePromoCodeHandler,
+  listPromoCodesHandler,
+  updatePromoCodeHandler,
+} from './admin-promo.controller.js';
+import { listFraudAlerts } from '../../shared/fraud/fraud.service.js';
+import { listAuditLogs } from '../../shared/audit/audit-log.service.js';
 
 const router = Router();
 
@@ -41,6 +64,75 @@ router.use(authenticateJWT, resolveOrgContext, requireOrgMembership, requireMinR
 
 router.get('/organisation', (req, res) => {
   void getOrganisationHandler(req, res);
+});
+
+router.get('/onboarding/status', (req, res) => {
+  void getOnboardingStatusHandler(req, res);
+});
+
+router.post('/onboarding/confirm-wallet', requireMinRole(ROLES.SUPER_ADMIN), (req, res) => {
+  void confirmWalletHandler(req, res);
+});
+
+router.post('/organisation/upload-asset', (req, res) => {
+  void uploadOrgAssetHandler(req, res);
+});
+
+router.get('/venues', (req, res) => {
+  void listVenuesHandler(req, res);
+});
+
+router.post('/venues', (req, res) => {
+  void createVenueHandler(req, res);
+});
+
+router.patch('/venues/:venueId', (req, res) => {
+  void updateVenueHandler(req, res);
+});
+
+router.delete('/venues/:venueId', (req, res) => {
+  void deleteVenueHandler(req, res);
+});
+
+router.get('/promo-codes', (req, res) => {
+  void listPromoCodesHandler(req, res);
+});
+
+router.post('/promo-codes', (req, res) => {
+  void createPromoCodeHandler(req, res);
+});
+
+router.patch('/promo-codes/:promoId', (req, res) => {
+  void updatePromoCodeHandler(req, res);
+});
+
+router.delete('/promo-codes/:promoId', (req, res) => {
+  void deletePromoCodeHandler(req, res);
+});
+
+router.get('/fraud-logs', (req, res) => {
+  void (async () => {
+    const data = await listFraudAlerts({ limit: 100, offset: 0 });
+    res.json({ success: true, data });
+  })();
+});
+
+router.get('/audit-logs', (req, res) => {
+  void (async () => {
+    const result = await listAuditLogs({ limit: 100, offset: 0 });
+    res.json({ success: true, data: result.rows });
+  })();
+});
+
+router.get('/finance/earnings', (req, res) => {
+  void (async () => {
+    if (!req.orgId) {
+      res.status(403).json({ success: false, error: 'No organisation context' });
+      return;
+    }
+    const data = await getOrgEarnings(req.orgId);
+    res.json({ success: true, data });
+  })();
 });
 
 router.patch('/organisation', requireMinRole(ROLES.SUPER_ADMIN), (req, res) => {
@@ -133,6 +225,18 @@ router.delete('/events/:eventId/tiers/:tierId', (req, res) => {
 
 router.post('/events/:eventId/tiers/:tierId/upload-image', (req, res) => {
   void uploadTierImageHandler(req, res);
+});
+
+router.get('/events/:eventId/analytics', (req, res) => {
+  void getEventAnalyticsHandler(req, res);
+});
+
+router.get('/events/:eventId/tickets', (req, res) => {
+  void listEventTicketsHandler(req, res);
+});
+
+router.get('/events/:eventId/checkins', (req, res) => {
+  void listEventCheckinsHandler(req, res);
 });
 
 export default router;

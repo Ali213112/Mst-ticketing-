@@ -92,7 +92,7 @@ TicketChain is a **multi-tenant SaaS platform** (not a single-org app). Your com
 
 ---
 
-## 2. Technology Stack
+## 2. Technology Stack  
 
 ### Backend Core
 

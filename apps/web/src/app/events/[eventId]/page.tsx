@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ChevronLeft, Calendar, MapPin, Layers, Compass, Tag, FileCode } from 'lucide-react';
+import { ChevronLeft, Calendar, MapPin, Layers, Compass, Tag } from 'lucide-react';
+import { ContractAddressRow } from '@/components/blockchain/ContractExplorerLink';
 import { TierPurchase } from '@/components/TierPurchase';
 import { getEvent } from '@/lib/api';
+import { toDisplayImageUrl } from '@/lib/media';
 import Navbar from '@/components/layout/Navbar';
 
 export default async function EventDetailPage({
@@ -14,6 +16,7 @@ export default async function EventDetailPage({
   if (!event) notFound();
 
   const tiers = event.tiers ?? [];
+  const imageSrc = toDisplayImageUrl(event.imageIpfsUrl);
 
   return (
     <>
@@ -37,9 +40,9 @@ export default async function EventDetailPage({
           <div className="bg-white border border-zinc-200 rounded overflow-hidden">
             {/* Event Banner */}
             <div className="aspect-[21/9] bg-zinc-100 border-b border-zinc-100 flex items-center justify-center relative">
-              {event.imageIpfsUrl ? (
+              {imageSrc ? (
                 <img
-                  src={event.imageIpfsUrl}
+                  src={imageSrc}
                   alt={event.name}
                   className="w-full h-full object-cover grayscale"
                 />
@@ -72,9 +75,13 @@ export default async function EventDetailPage({
                     <span>{[event.venueName, event.city, event.country].filter(Boolean).join(', ') || 'Venue TBA'}</span>
                   </div>
                   {event.contractAddress && (
-                    <div className="flex items-center space-x-1.5">
-                      <FileCode className="w-4 h-4 text-zinc-400" />
-                      <span className="truncate max-w-[180px] select-all">Contract: {event.contractAddress}</span>
+                    <div className="flex items-center space-x-1.5 min-w-0 max-w-[240px]">
+                      <ContractAddressRow
+                        label="Contract:"
+                        address={event.contractAddress}
+                        className="text-xs font-mono text-zinc-500"
+                        addressClassName="max-w-[140px]"
+                      />
                     </div>
                   )}
                 </div>

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { getMe, getAdminEarnings, getAdminEvents, type AuthUser, type AdminEarnings, type AdminEventSummary } from '@/lib/api';
 import Sidebar from '@/components/layout/Sidebar';
+import { ContractExplorerLink } from '@/components/blockchain/ContractExplorerLink';
 
 const weiToToken = (wei: string) => (Number(wei) / 1e18).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 
@@ -206,7 +207,12 @@ export default function AdminFinancePage() {
                           <td className="px-6 py-4 font-bold text-zinc-950">
                             {weiToToken(payout.amount)} tMSTC
                           </td>
-                          <td className="px-6 py-4 text-zinc-500">{payout.txHash}</td>
+                          <td className="px-6 py-4 text-zinc-500">
+                            <span className="inline-flex items-center gap-1">
+                              {payout.txHash}
+                              <ContractExplorerLink value={payout.txHash} type="tx" stopPropagation={false} />
+                            </span>
+                          </td>
                           <td className="px-6 py-4 text-right">
                             <span className={`px-2 py-0.5 border rounded text-[9px] font-bold ${
                               payout.status === 'completed'

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const CONTRACTS = ['EventTickets1155', 'OrgRegistry'];
+const CONTRACTS = ['EventTickets1155', 'OrgRegistry', 'TicketMarketplace'];
 const artifactsDir = path.resolve(__dirname, '../artifacts/contracts');
 const apiAbisDir = path.resolve(__dirname, '../../../apps/api/src/shared/blockchain/abis');
 

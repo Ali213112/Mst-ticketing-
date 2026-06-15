@@ -15,12 +15,21 @@ export async function listOrganisationsHandler(req: Request, res: Response): Pro
 }
 
 export async function createOrganisationHandler(req: Request, res: Response): Promise<void> {
-  const result = await platformCreateOrganisation(req.body);
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Authentication required' });
+    return;
+  }
+
+  const result = await platformCreateOrganisation(req.body, req.user.userId);
   if ('error' in result) {
     res.status(result.status ?? 400).json({ success: false, error: result.error });
     return;
   }
-  res.status(result.status).json({ success: true, data: result.org });
+  res.status(result.status).json({
+    success: true,
+    data: result.org,
+    founderInvite: result.founderInvite,
+  });
 }
 
 export async function getOrganisationHandler(req: Request, res: Response): Promise<void> {

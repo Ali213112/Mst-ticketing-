@@ -100,6 +100,16 @@ contract EventTickets1155 is ERC1155, ERC2981, Ownable, ReentrancyGuard {
         return tierId;
     }
 
+    /// @notice Custodial transfer by contract owner (backend deployer wallet).
+    function adminTransfer(
+        address from,
+        address to,
+        uint256 tierId,
+        uint256 quantity
+    ) external onlyOwner nonReentrant {
+        _safeTransferFrom(from, to, tierId, quantity, "");
+    }
+
     function withdrawFunds(address to) external onlyOwner nonReentrant {
         require(to != address(0), "Invalid recipient");
         uint256 balance = address(this).balance;

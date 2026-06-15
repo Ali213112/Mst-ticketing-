@@ -17,6 +17,11 @@ import {
   adminUploadEventBanner,
   adminUploadTierImage,
 } from './admin-event.service.js';
+import {
+  adminGetEventAnalytics,
+  adminListEventCheckins,
+  adminListEventTickets,
+} from './admin-event-insights.service.js';
 
 export async function listEventsHandler(req: Request, res: Response): Promise<void> {
   const result = await adminListEvents(req.orgId!, req.query as Record<string, string | undefined>);
@@ -179,6 +184,41 @@ export async function deleteTierHandler(req: Request, res: Response): Promise<vo
   res.json({ success: true });
 }
 
+export async function getEventAnalyticsHandler(req: Request, res: Response): Promise<void> {
+  const result = await adminGetEventAnalytics(req.orgId!, req.params.eventId as string);
+  if ('error' in result) {
+    res.status(result.status ?? 404).json({ success: false, error: result.error });
+    return;
+  }
+  res.json({ success: true, data: result.analytics });
+}
+
+export async function listEventTicketsHandler(req: Request, res: Response): Promise<void> {
+  const result = await adminListEventTickets(
+    req.orgId!,
+    req.params.eventId as string,
+    req.query as Record<string, string | undefined>
+  );
+  if ('error' in result) {
+    res.status(result.status ?? 404).json({ success: false, error: result.error });
+    return;
+  }
+  res.json({ success: true, data: result.rows, meta: result.meta });
+}
+
+export async function listEventCheckinsHandler(req: Request, res: Response): Promise<void> {
+  const result = await adminListEventCheckins(
+    req.orgId!,
+    req.params.eventId as string,
+    req.query as Record<string, string | undefined>
+  );
+  if ('error' in result) {
+    res.status(result.status ?? 404).json({ success: false, error: result.error });
+    return;
+  }
+  res.json({ success: true, data: result.rows, meta: result.meta });
+}
+
 export async function uploadTierImageHandler(req: Request, res: Response): Promise<void> {
   const result = await adminUploadTierImage(
     req.orgId!,
@@ -197,6 +237,6 @@ export async function uploadTierImageHandler(req: Request, res: Response): Promi
   res.json({
     success: true,
     data: result.tier,
-    ipfs: { image: result.image, metadata: result.metadata },
+    ipfs: { image: result.image },
   });
 }

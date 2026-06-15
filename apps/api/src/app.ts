@@ -16,6 +16,8 @@ import ticketsRoutes from './modules/tickets/tickets.routes.js';
 import webhooksRoutes from './modules/payments/webhooks.routes.js';
 import orgRoutes from './modules/org/org.routes.js';
 import volunteerRoutes from './modules/volunteer/volunteer.routes.js';
+import marketplaceRoutes from './modules/marketplace/marketplace.routes.js';
+import profileRoutes from './modules/profile/profile.routes.js';
 
 ensureJwtKeysExist();
 
@@ -32,7 +34,8 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
+// Base64 image uploads need a larger JSON body than Express's 100kb default.
+app.use(express.json({ limit: '15mb' }));
 app.use(cookieParser());
 
 app.use('/api/auth', authRoutes);
@@ -43,6 +46,16 @@ app.use('/api/tickets', ticketsRoutes);
 app.use('/api/webhooks', webhooksRoutes);
 app.use('/api/orgs', orgRoutes);
 app.use('/api/volunteer', volunteerRoutes);
+app.use('/api/marketplace', marketplaceRoutes);
+app.use('/api/profile', profileRoutes);
+
+app.use((err: Error & { type?: string }, _req, res, next) => {
+  if (err.type === 'entity.too.large') {
+    res.status(413).json({ success: false, error: 'Upload too large (max 15MB)' });
+    return;
+  }
+  next(err);
+});
 
 app.get('/health', async (_req, res) => {
   const [dbOk, redisOk, mst] = await Promise.all([
@@ -117,13 +130,34 @@ app.get('/', (_req, res) => {
       checkinHistory: 'GET /api/volunteer/checkin/history?eventId=&page=&limit=',
       offlineSnapshot: 'GET /api/volunteer/checkin/offline-snapshot?eventId=',
     },
+    marketplace: {
+      list: 'GET /api/marketplace',
+      buy: 'POST /api/marketplace/:listingId/buy',
+    },
+    profile: {
+      rewards: 'GET /api/profile/rewards',
+      referral: 'GET /api/profile/referral',
+    },
+    platformFinance: {
+      kpis: 'GET /api/platform/kpis',
+      settlements: 'GET /api/platform/settlements',
+      approveSettlement: 'POST /api/platform/settlements/:settlementId/approve',
+      fraud: 'GET /api/platform/fraud',
+      blacklist: 'POST /api/platform/fraud/blacklist',
+      audit: 'GET /api/platform/audit',
+    },
   });
 });
 
 const port = env.PORT;
 
-app.listen(port, () => {
-  console.log(`TicketChain API listening on http://localhost:${port}`);
-});
+const isDirectRun =
+  process.argv[1]?.includes('app.ts') || process.argv[1]?.includes('app.js');
+
+if (isDirectRun) {
+  app.listen(port, () => {
+    console.log(`TicketChain API listening on http://localhost:${port}`);
+  });
+}
 
 export default app;

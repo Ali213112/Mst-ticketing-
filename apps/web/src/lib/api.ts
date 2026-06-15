@@ -6,10 +6,18 @@ export interface AuthUser {
   walletAddress: string;
   role: number;
   orgIds: string[];
+  firstName?: string | null;
+  lastName?: string | null;
+  phoneNumber?: string | null;
+}
+
+export function getPostLoginPath(role: number): string {
+  return role === 99 ? '/platform' : '/events';
 }
 
 export interface EventSummary {
   id: string;
+  orgId?: string;
   name: string;
   category: string | null;
   city: string | null;
@@ -20,17 +28,43 @@ export interface EventSummary {
   totalTicketsSold: number;
 }
 
+export interface PublicOrgProfile {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  logoUrl: string | null;
+  bannerUrl: string | null;
+  websiteUrl: string | null;
+  brandPrimaryColor: string | null;
+  brandSecondaryColor: string | null;
+  city: string | null;
+  country: string | null;
+  status: string;
+}
+
+export async function getPublicOrgBySlug(slug: string): Promise<PublicOrgProfile | null> {
+  const res = await fetch(`${API_URL}/api/orgs/slug/${encodeURIComponent(slug)}`, { cache: 'no-store' });
+  if (res.status === 404) return null;
+  const parsed = await parseJson<PublicOrgProfile>(res);
+  return parsed.data ?? null;
+}
+
 export interface TierResponse {
   id: string;
   eventId: string;
   tierIndex: number;
   name: string;
   description: string | null;
+  zone: string | null;
   totalSupply: number;
   minted: number;
   maxPerWallet: number;
   priceWei: string;
   priceDisplay: number | null;
+  isTransferable: boolean;
+  metadataIpfsHash: string | null;
+  metadataIpfsUri: string | null;
   status: string;
 }
 
@@ -38,6 +72,7 @@ export interface EventDetail extends EventSummary {
   description: string | null;
   venueName: string | null;
   contractAddress: string | null;
+  resaleEnabled?: boolean;
   tiers?: TierResponse[];
 }
 
@@ -87,6 +122,9 @@ async function parseJson<T>(res: Response): Promise<{ ok: boolean; data?: T; err
     }
     return { ok: true, data: json.data as T };
   } catch {
+    if (res.status === 413) {
+      return { ok: false, error: 'File too large — use an image under 10MB' };
+    }
     return { ok: false, error: `Unexpected response (HTTP ${res.status})` };
   }
 }
@@ -109,9 +147,10 @@ export async function fetchWithAuth(input: RequestInfo | URL, init?: RequestInit
     credentials: init?.credentials ?? 'include',
   };
 
-  const response = await window.fetch(input, mergedInit);
+  const response = await globalThis.fetch(input, mergedInit);
 
-  if (response.status === 401) {
+  // Token refresh relies on browser cookies — only attempt in the client
+  if (response.status === 401 && typeof window !== 'undefined') {
     const urlString = typeof input === 'string' ? input : (input instanceof URL ? input.toString() : input.url);
     if (urlString.includes('/api/auth/refresh')) {
       return response;
@@ -120,14 +159,14 @@ export async function fetchWithAuth(input: RequestInfo | URL, init?: RequestInit
     if (!isRefreshing) {
       isRefreshing = true;
       try {
-        const refreshRes = await window.fetch(`${API_URL}/api/auth/refresh`, {
+        const refreshRes = await globalThis.fetch(`${API_URL}/api/auth/refresh`, {
           method: 'POST',
           credentials: 'include',
         });
         if (refreshRes.ok) {
           onRefreshed(true);
           isRefreshing = false;
-          return window.fetch(input, mergedInit);
+          return globalThis.fetch(input, mergedInit);
         } else {
           onRefreshed(false);
           isRefreshing = false;
@@ -141,7 +180,7 @@ export async function fetchWithAuth(input: RequestInfo | URL, init?: RequestInit
         subscribeTokenRefresh((success) => resolve(success));
       });
       if (refreshSuccess) {
-        return window.fetch(input, mergedInit);
+        return globalThis.fetch(input, mergedInit);
       }
     }
   }
@@ -371,6 +410,24 @@ export async function getReferralStats(): Promise<ReferralStats | null> {
   return parsed.data ?? null;
 }
 
+export async function updateProfile(body: {
+  firstName?: string;
+  lastName?: string;
+  phoneNumber?: string;
+}): Promise<Pick<AuthUser, 'id' | 'email' | 'walletAddress' | 'firstName' | 'lastName' | 'phoneNumber'>> {
+  const res = await fetch(`${API_URL}/api/profile`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const parsed = await parseJson<Pick<AuthUser, 'id' | 'email' | 'walletAddress' | 'firstName' | 'lastName' | 'phoneNumber'>>(res);
+  if (!parsed.ok || !parsed.data) {
+    throw new Error(parsed.error ?? 'Failed to update profile');
+  }
+  return parsed.data;
+}
+
 export interface VolunteerEvent {
   id: string;
   name: string;
@@ -441,15 +498,46 @@ export async function getCheckinHistory(eventId: string): Promise<CheckinHistory
   return parsed.data ?? [];
 }
 
+export type OrgType = 'promoter' | 'venue' | 'university' | 'sports' | 'corporate' | 'other';
+
 export interface AdminOrgDetails {
   id: string;
   name: string;
   slug: string;
   description: string | null;
   logoUrl: string | null;
+  bannerUrl?: string | null;
+  websiteUrl?: string | null;
+  brandPrimaryColor?: string | null;
+  brandSecondaryColor?: string | null;
+  taxId?: string | null;
+  gstNumber?: string | null;
+  registrationNumber?: string | null;
+  orgType?: OrgType | null;
+  country?: string | null;
+  state?: string | null;
+  city?: string | null;
+  postalCode?: string | null;
+  founderName?: string | null;
+  founderPhone?: string | null;
+  pendingFounderEmail?: string | null;
+  superAdminWalletAddress?: string | null;
+  verificationStatus?: string;
+  walletConfirmedAt?: string | null;
   subscriptionPlan: string;
   status: string;
   platformCommissionBps: number;
+}
+
+export interface OnboardingStatus {
+  profileComplete: boolean;
+  profilePercent: number;
+  kycSubmitted: boolean;
+  kycVerified: boolean;
+  walletConfirmed: boolean;
+  teamInvited: boolean;
+  readyForEvents: boolean;
+  verificationStatus: string;
 }
 
 export interface AdminEventSummary {
@@ -494,13 +582,148 @@ export async function getAdminEvents(): Promise<AdminEventSummary[]> {
   return parsed.data ?? [];
 }
 
+export async function getAdminEvent(eventId: string): Promise<EventDetail | null> {
+  const res = await fetch(`${API_URL}/api/admin/events/${eventId}`, {
+    credentials: 'include',
+    cache: 'no-store',
+  });
+  if (res.status === 404) return null;
+  const parsed = await parseJson<EventDetail>(res);
+  return parsed.data ?? null;
+}
+
+export async function updateAdminOrganisation(body: Partial<AdminOrgDetails> & {
+  brandPrimaryColor?: string;
+  brandSecondaryColor?: string;
+  postalCode?: string;
+  founderPhone?: string;
+}): Promise<AdminOrgDetails> {
+  const res = await fetch(`${API_URL}/api/admin/organisation`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const parsed = await parseJson<AdminOrgDetails>(res);
+  if (!parsed.ok || !parsed.data) {
+    throw new Error(parsed.error ?? 'Failed to update organisation');
+  }
+  return parsed.data;
+}
+
+export async function submitOrgKyc(documents: Array<{
+  type: 'registration_certificate' | 'tax_id' | 'id_proof' | 'address_proof' | 'other';
+  label: string;
+  url: string;
+}>): Promise<void> {
+  const res = await fetch(`${API_URL}/api/admin/organisation/kyc`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ documents }),
+  });
+  const parsed = await parseJson<void>(res);
+  if (!parsed.ok) {
+    throw new Error(parsed.error ?? 'KYC submission failed');
+  }
+}
+
+export function inferFileMimeType(file: File): string {
+  if (file.type) return file.type;
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  const map: Record<string, string> = {
+    pdf: 'application/pdf',
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    webp: 'image/webp',
+    gif: 'image/gif',
+  };
+  return map[ext] ?? 'application/octet-stream';
+}
+
+export async function uploadKycDocument(params: {
+  fileName: string;
+  mimeType: string;
+  contentBase64: string;
+}): Promise<{ url: string }> {
+  const res = await fetch(`${API_URL}/api/admin/organisation/upload-asset`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...params, assetType: 'kyc_document' }),
+  });
+  const parsed = await parseJson<{ url?: string; ipfsUri?: string; asset?: { gatewayUrl?: string; uri?: string } }>(res);
+  if (!parsed.ok || !parsed.data) {
+    throw new Error(parsed.error ?? 'KYC document upload failed');
+  }
+  const url =
+    parsed.data.url ??
+    parsed.data.asset?.gatewayUrl ??
+    parsed.data.asset?.uri ??
+    parsed.data.ipfsUri;
+  if (!url) {
+    throw new Error('KYC document upload failed — server did not return a URL');
+  }
+  return { url };
+}
+
+export async function uploadOrgAsset(params: {
+  fileName: string;
+  mimeType: string;
+  contentBase64: string;
+  assetType: 'logo' | 'banner';
+}): Promise<{ org: AdminOrgDetails }> {
+  const res = await fetch(`${API_URL}/api/admin/organisation/upload-asset`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const parsed = await parseJson<{ org: AdminOrgDetails }>(res);
+  if (!parsed.ok || !parsed.data) {
+    throw new Error(parsed.error ?? 'Upload failed');
+  }
+  return parsed.data;
+}
+
+export async function getOnboardingStatus(): Promise<OnboardingStatus> {
+  const res = await fetch(`${API_URL}/api/admin/onboarding/status`, { credentials: 'include', cache: 'no-store' });
+  const parsed = await parseJson<OnboardingStatus>(res);
+  if (!parsed.ok || !parsed.data) {
+    throw new Error(parsed.error ?? 'Failed to fetch onboarding status');
+  }
+  return parsed.data;
+}
+
+export async function confirmOrgWallet(walletAddress: string): Promise<OnboardingStatus> {
+  const res = await fetch(`${API_URL}/api/admin/onboarding/confirm-wallet`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ walletAddress }),
+  });
+  const parsed = await parseJson<OnboardingStatus>(res);
+  if (!parsed.ok || !parsed.data) {
+    throw new Error(parsed.error ?? 'Wallet confirmation failed');
+  }
+  return parsed.data;
+}
+
 export async function createAdminEvent(body: {
   name: string;
-  description: string;
+  description?: string;
   eventDate: string;
+  eventEndDate?: string;
   venueName: string;
   city: string;
   category: string;
+  ageRestriction?: number;
+  tags?: string[];
+  resaleEnabled?: boolean;
+  resalePriceCapBps?: number;
+  resaleRoyaltyBps?: number;
+  zones?: string[];
 }): Promise<{ id: string }> {
   const res = await fetch(`${API_URL}/api/admin/events`, {
     method: 'POST',
@@ -511,6 +734,61 @@ export async function createAdminEvent(body: {
   const parsed = await parseJson<{ id: string }>(res);
   if (!parsed.ok || !parsed.data) {
     throw new Error(parsed.error ?? 'Failed to create event');
+  }
+  return parsed.data;
+}
+
+export async function createAdminTier(
+  eventId: string,
+  body: {
+    name: string;
+    description?: string;
+    zone?: string;
+    totalSupply: number;
+    maxPerWallet?: number;
+    priceWei: string;
+    priceDisplay?: number;
+    isTransferable?: boolean;
+  }
+): Promise<TierResponse> {
+  const res = await fetch(`${API_URL}/api/admin/events/${eventId}/tiers`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const parsed = await parseJson<TierResponse>(res);
+  if (!parsed.ok || !parsed.data) {
+    throw new Error(parsed.error ?? 'Failed to create ticket tier');
+  }
+  return parsed.data;
+}
+
+export async function deleteAdminTier(eventId: string, tierId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/admin/events/${eventId}/tiers/${tierId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  const parsed = await parseJson<void>(res);
+  if (!parsed.ok) {
+    throw new Error(parsed.error ?? 'Failed to delete ticket tier');
+  }
+}
+
+export async function uploadAdminTierImage(
+  eventId: string,
+  tierId: string,
+  params: { fileName: string; mimeType: string; contentBase64: string }
+): Promise<TierResponse> {
+  const res = await fetch(`${API_URL}/api/admin/events/${eventId}/tiers/${tierId}/upload-image`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const parsed = await parseJson<TierResponse>(res);
+  if (!parsed.ok || !parsed.data) {
+    throw new Error(parsed.error ?? 'Failed to upload tier image');
   }
   return parsed.data;
 }
@@ -536,6 +814,7 @@ export async function inviteAdminMember(body: {
   email: string;
   role: number;
   eventId?: string;
+  name?: string;
 }): Promise<void> {
   const res = await fetch(`${API_URL}/api/admin/members/invite`, {
     method: 'POST',
@@ -623,10 +902,10 @@ export async function getPlatformKPIs(): Promise<PlatformKPIs> {
 export async function getPlatformTenants(): Promise<PlatformTenant[]> {
   const res = await fetch(`${API_URL}/api/platform/organisations`, { credentials: 'include', cache: 'no-store' });
   const parsed = await parseJson<PlatformTenant[]>(res);
-  // The list endpoint returns OrganisationSummary which lacks platformCommissionBps.
-  // We add a default so the UI doesn't break.
-  const rows = parsed.data ?? [];
-  return rows.map(r => ({ ...r, platformCommissionBps: r.platformCommissionBps ?? 200 }));
+  if (!parsed.ok) {
+    throw new Error(parsed.error ?? 'Failed to fetch organisations');
+  }
+  return parsed.data ?? [];
 }
 
 export async function updateTenantKyc(tenantId: string, status: 'verified' | 'suspended' | 'pending'): Promise<void> {
@@ -659,6 +938,9 @@ export async function updateTenantCommission(tenantId: string, bps: number): Pro
 export async function getPlatformSettlements(): Promise<PlatformSettlement[]> {
   const res = await fetch(`${API_URL}/api/platform/settlements`, { credentials: 'include', cache: 'no-store' });
   const parsed = await parseJson<PlatformSettlement[]>(res);
+  if (!parsed.ok) {
+    throw new Error(parsed.error ?? 'Failed to fetch settlements');
+  }
   return parsed.data ?? [];
 }
 
@@ -676,6 +958,9 @@ export async function approvePlatformSettlement(settlementId: string): Promise<v
 export async function getPlatformFraudAlerts(): Promise<FraudAlert[]> {
   const res = await fetch(`${API_URL}/api/platform/fraud`, { credentials: 'include', cache: 'no-store' });
   const parsed = await parseJson<FraudAlert[]>(res);
+  if (!parsed.ok) {
+    throw new Error(parsed.error ?? 'Failed to fetch fraud alerts');
+  }
   return parsed.data ?? [];
 }
 
@@ -695,6 +980,9 @@ export async function toggleWalletBlacklist(walletAddress: string, blacklist: bo
 export async function getPlatformAuditLogs(): Promise<AuditLog[]> {
   const res = await fetch(`${API_URL}/api/platform/audit`, { credentials: 'include', cache: 'no-store' });
   const parsed = await parseJson<AuditLog[]>(res);
+  if (!parsed.ok) {
+    throw new Error(parsed.error ?? 'Failed to fetch audit logs');
+  }
   return parsed.data ?? [];
 }
 
@@ -703,21 +991,36 @@ export async function createPlatformOrganisation(body: {
   slug?: string;
   description?: string;
   superAdminEmail: string;
+  founderName: string;
+  founderPhone?: string;
   country?: string;
+  state?: string;
   city?: string;
+  postalCode?: string;
+  orgType: OrgType;
+  registrationNumber?: string;
+  taxId?: string;
+  gstNumber?: string;
   subscriptionPlan?: 'starter' | 'growth' | 'enterprise';
-}): Promise<PlatformTenant> {
+  platformCommissionBps?: number;
+  platformNotes?: string;
+}): Promise<{ org: PlatformTenant; founderInvite?: { inviteToken: string; inviteUrl: string } }> {
   const res = await fetch(`${API_URL}/api/platform/organisations`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const parsed = await parseJson<PlatformTenant>(res);
-  if (!parsed.ok || !parsed.data) {
-    throw new Error(parsed.error ?? 'Failed to create organisation');
+  const json = await res.json() as {
+    success: boolean;
+    data?: PlatformTenant;
+    founderInvite?: { inviteToken: string; inviteUrl: string };
+    error?: string;
+  };
+  if (!res.ok || !json.success || !json.data) {
+    throw new Error(json.error ?? 'Failed to create organisation');
   }
-  return parsed.data;
+  return { org: json.data, founderInvite: json.founderInvite };
 }
 
 export async function logoutSession(): Promise<void> {
@@ -729,6 +1032,247 @@ export async function logoutSession(): Promise<void> {
   if (!parsed.ok) {
     throw new Error(parsed.error ?? 'Logout failed');
   }
+}
+
+// --- Venues ---
+export interface VenueSummary {
+  id: string;
+  name: string;
+  address: string | null;
+  city: string | null;
+  country: string | null;
+  capacity: number | null;
+  seatMap: unknown;
+}
+
+export async function getAdminVenues(): Promise<VenueSummary[]> {
+  const res = await fetch(`${API_URL}/api/admin/venues`, { credentials: 'include', cache: 'no-store' });
+  const parsed = await parseJson<VenueSummary[]>(res);
+  return parsed.data ?? [];
+}
+
+export async function createAdminVenue(body: {
+  name: string;
+  address?: string;
+  city?: string;
+  country?: string;
+  capacity?: number;
+  seatMap?: unknown;
+}): Promise<VenueSummary> {
+  const res = await fetch(`${API_URL}/api/admin/venues`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const parsed = await parseJson<VenueSummary>(res);
+  if (!parsed.ok || !parsed.data) throw new Error(parsed.error ?? 'Failed to create venue');
+  return parsed.data;
+}
+
+export async function deleteAdminVenue(venueId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/admin/venues/${venueId}`, { method: 'DELETE', credentials: 'include' });
+  const parsed = await parseJson<void>(res);
+  if (!parsed.ok) throw new Error(parsed.error ?? 'Failed to delete venue');
+}
+
+// --- Promo codes ---
+export interface PromoCodeSummary {
+  id: string;
+  code: string;
+  discountType: 'percentage' | 'fixed_wei';
+  discountValue: string;
+  eventId: string | null;
+  tierId: string | null;
+  maxUses: number | null;
+  usesRemaining: number | null;
+  status: string;
+}
+
+export async function getAdminPromoCodes(): Promise<PromoCodeSummary[]> {
+  const res = await fetch(`${API_URL}/api/admin/promo-codes`, { credentials: 'include', cache: 'no-store' });
+  const parsed = await parseJson<PromoCodeSummary[]>(res);
+  return parsed.data ?? [];
+}
+
+export async function createAdminPromoCode(body: {
+  code: string;
+  discountType: 'percentage' | 'fixed_wei';
+  discountValue: string;
+  maxUses?: number;
+}): Promise<PromoCodeSummary> {
+  const res = await fetch(`${API_URL}/api/admin/promo-codes`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const parsed = await parseJson<PromoCodeSummary>(res);
+  if (!parsed.ok || !parsed.data) throw new Error(parsed.error ?? 'Failed to create promo code');
+  return parsed.data;
+}
+
+export async function updateAdminPromoCode(promoId: string, body: { status?: string }): Promise<void> {
+  const res = await fetch(`${API_URL}/api/admin/promo-codes/${promoId}`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const parsed = await parseJson<void>(res);
+  if (!parsed.ok) throw new Error(parsed.error ?? 'Failed to update promo code');
+}
+
+export async function validatePromoCode(code: string, tierId: string): Promise<{
+  valid: boolean;
+  discountWei: string;
+  reason?: string;
+}> {
+  const res = await fetch(`${API_URL}/api/tickets/mint/validate-promo`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, tierId }),
+  });
+  const parsed = await parseJson<{ valid: boolean; discountWei: string; reason?: string }>(res);
+  if (!parsed.ok || !parsed.data) throw new Error(parsed.error ?? 'Promo validation failed');
+  return parsed.data;
+}
+
+export async function listFeaturedEvents(): Promise<EventSummary[]> {
+  const res = await fetch(`${API_URL}/api/events/featured`, { cache: 'no-store' });
+  const parsed = await parseJson<EventSummary[]>(res);
+  return parsed.data ?? [];
+}
+
+export async function downloadTicketPdf(ticketId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/tickets/${ticketId}/pdf`, { credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to download ticket');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ticket-${ticketId}.html`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// --- Event insights ---
+export interface EventAnalytics {
+  eventId: string;
+  totalTicketsSold: number;
+  totalCheckedIn: number;
+  totalRevenueWei: string;
+  attendanceRate: number;
+  tierBreakdown: Array<{ tierName: string; totalSupply: number; minted: number; revenueWei: string }>;
+}
+
+export async function getEventAnalytics(eventId: string): Promise<EventAnalytics> {
+  const res = await fetch(`${API_URL}/api/admin/events/${eventId}/analytics`, { credentials: 'include', cache: 'no-store' });
+  const parsed = await parseJson<EventAnalytics>(res);
+  if (!parsed.ok || !parsed.data) throw new Error(parsed.error ?? 'Failed to load analytics');
+  return parsed.data;
+}
+
+export async function getEventTicketsAdmin(eventId: string): Promise<Array<{
+  id: string;
+  tierName: string;
+  ownerWallet: string;
+  status: string;
+  createdAt: string;
+}>> {
+  const res = await fetch(`${API_URL}/api/admin/events/${eventId}/tickets`, { credentials: 'include', cache: 'no-store' });
+  const parsed = await parseJson<Array<{ id: string; tierName: string; ownerWallet: string; status: string; createdAt: string }>>(res);
+  return parsed.data ?? [];
+}
+
+export async function getEventCheckinsAdmin(eventId: string): Promise<Array<{
+  id: string;
+  ticketId: string;
+  zoneAccessed: string | null;
+  scanMethod: string;
+  success: boolean;
+  createdAt: string;
+}>> {
+  const res = await fetch(`${API_URL}/api/admin/events/${eventId}/checkins`, { credentials: 'include', cache: 'no-store' });
+  const parsed = await parseJson<Array<{ id: string; ticketId: string; zoneAccessed: string | null; scanMethod: string; success: boolean; createdAt: string }>>(res);
+  return parsed.data ?? [];
+}
+
+// --- Platform catalog ---
+export async function getPlatformEvents(): Promise<Array<{
+  id: string;
+  orgName: string;
+  name: string;
+  status: string;
+  eventDate: string;
+  city: string | null;
+  totalTicketsSold: number;
+}>> {
+  const res = await fetch(`${API_URL}/api/platform/events`, { credentials: 'include', cache: 'no-store' });
+  const parsed = await parseJson<Array<{ id: string; orgName: string; name: string; status: string; eventDate: string; city: string | null; totalTicketsSold: number }>>(res);
+  return parsed.data ?? [];
+}
+
+export async function getPlatformTickets(): Promise<Array<{
+  id: string;
+  eventName: string;
+  orgName: string;
+  tierName: string;
+  ownerWallet: string;
+  status: string;
+}>> {
+  const res = await fetch(`${API_URL}/api/platform/tickets`, { credentials: 'include', cache: 'no-store' });
+  const parsed = await parseJson<Array<{ id: string; eventName: string; orgName: string; tierName: string; ownerWallet: string; status: string }>>(res);
+  return parsed.data ?? [];
+}
+
+export async function getPlatformAdmins(): Promise<Array<{
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  status: string;
+}>> {
+  const res = await fetch(`${API_URL}/api/platform/admins`, { credentials: 'include', cache: 'no-store' });
+  const parsed = await parseJson<Array<{ id: string; email: string; firstName: string | null; lastName: string | null; status: string }>>(res);
+  return parsed.data ?? [];
+}
+
+export async function getPlatformRefunds(): Promise<Array<{
+  id: string;
+  eventName: string;
+  orgName: string;
+  refundAmountWei: string;
+  refundReason: string | null;
+  status: string;
+}>> {
+  const res = await fetch(`${API_URL}/api/platform/refunds`, { credentials: 'include', cache: 'no-store' });
+  const parsed = await parseJson<Array<{ id: string; eventName: string; orgName: string; refundAmountWei: string; refundReason: string | null; status: string }>>(res);
+  return parsed.data ?? [];
+}
+
+export async function reviewPlatformRefund(refundId: string, action: 'approve' | 'reject'): Promise<void> {
+  const res = await fetch(`${API_URL}/api/platform/refunds/${refundId}/review`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action }),
+  });
+  const parsed = await parseJson<void>(res);
+  if (!parsed.ok) throw new Error(parsed.error ?? 'Failed to review refund');
+}
+
+export async function getBlockchainHealth(): Promise<{
+  rpcHealth: string;
+  chainId: number;
+  rpcUrl: string;
+  deployerConfigured: boolean;
+}> {
+  const res = await fetch(`${API_URL}/api/platform/blockchain/health`, { credentials: 'include', cache: 'no-store' });
+  const parsed = await parseJson<{ rpcHealth: string; chainId: number; rpcUrl: string; deployerConfigured: boolean }>(res);
+  if (!parsed.ok || !parsed.data) throw new Error(parsed.error ?? 'Failed to fetch blockchain health');
+  return parsed.data;
 }
 
 

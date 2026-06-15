@@ -10,17 +10,12 @@ import {
 import { getMe, getPlatformAuditLogs, type AuthUser, type AuditLog } from '@/lib/api';
 import Sidebar from '@/components/layout/Sidebar';
 
-const MOCK_AUDIT_LOGS: AuditLog[] = [
-  { id: 'l-1', timestamp: '2025-05-31T21:05:12Z', userId: 'user-091', action: 'APPROVE_KYC_TENANT', ipAddress: '192.168.1.5', details: 'Approved tenant KYC for Global Beats Inc. (t-2)' },
-  { id: 'l-2', timestamp: '2025-05-31T20:44:03Z', userId: 'user-091', action: 'UPDATE_COMMISSION_RATE', ipAddress: '192.168.1.5', details: 'Updated tenant commission for MST Events (t-1) to 200 BPS' },
-  { id: 'l-3', timestamp: '2025-05-31T19:12:44Z', userId: 'user-088', action: 'BLACKLIST_WALLET', ipAddress: '185.45.12.90', details: 'Blacklisted malicious wallet 0x1F2A7...aB12 due to scan spam' }
-];
-
 export default function PlatformAuditPage() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -34,8 +29,12 @@ export default function PlatformAuditPage() {
         }
         setUser(me);
 
-        const data = await getPlatformAuditLogs().catch(() => MOCK_AUDIT_LOGS);
-        setLogs(data.length > 0 ? data : MOCK_AUDIT_LOGS);
+        try {
+          const data = await getPlatformAuditLogs();
+          setLogs(data);
+        } catch (err) {
+          setFetchError(err instanceof Error ? err.message : 'Failed to load audit logs');
+        }
       } catch {
         setError('Failed to load audit logs.');
       } finally {
@@ -84,7 +83,13 @@ export default function PlatformAuditPage() {
             </div>
           ) : (
             <>
-              {/* Search Bar */}
+              {fetchError && (
+                <div className="bg-red-50 border border-red-100 text-red-700 text-xs font-mono p-3 rounded flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  {fetchError}
+                </div>
+              )}
+
               <div className="relative">
                 <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-400" />
                 <input
@@ -110,6 +115,15 @@ export default function PlatformAuditPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-50">
+                      {filteredLogs.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="px-6 py-12 text-center text-xs font-mono text-zinc-400">
+                            {logs.length === 0
+                              ? 'No audit log entries yet. Platform actions will be recorded here.'
+                              : 'No audit logs match current filter.'}
+                          </td>
+                        </tr>
+                      )}
                       {filteredLogs.map((log) => (
                         <tr key={log.id} className="hover:bg-zinc-50/50 transition-colors">
                           <td className="px-6 py-4 text-zinc-550">

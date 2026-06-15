@@ -1,13 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { CHAIN_NAMESPACES, WALLET_ADAPTERS, WEB3AUTH_NETWORK } from '@web3auth/base';
 import { AuthAdapter } from '@web3auth/auth-adapter';
 import { EthereumPrivateKeyProvider } from '@web3auth/ethereum-provider';
 import { Web3AuthNoModal } from '@web3auth/no-modal';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Phone, ShieldCheck, AlertCircle, LogOut, Loader2, ArrowRight } from 'lucide-react';
-import { verifySession, getMe, logoutSession } from '@/lib/api';
+import { Mail, Phone, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
+import { verifySession, getMe, getPostLoginPath } from '@/lib/api';
 
 const clientId = process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID ?? '';
 const chainIdDecimal = Number(process.env.NEXT_PUBLIC_MST_CHAIN_ID ?? 4545);
@@ -81,25 +82,25 @@ const LOGIN = {
 type LoginMethod = 'email' | 'sms';
 
 export function Web3AuthLogin() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [method, setMethod] = useState<LoginMethod>('email');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [user, setUser] = useState<{ email: string; walletAddress: string } | null>(null);
 
   useEffect(() => {
     void (async () => {
       try {
         const me = await getMe();
         if (me) {
-          setUser({ email: me.email, walletAddress: me.walletAddress });
+          router.replace(getPostLoginPath(me.role));
         }
       } catch {
         // not logged in
       }
     })();
-  }, []);
+  }, [router]);
 
   const login = useCallback(async (loginProvider: string, loginHint: string) => {
     if (!clientId) {
@@ -123,13 +124,13 @@ export function Web3AuthLogin() {
       }
 
       const sessionUser = await verifySession(idToken, walletAddress);
-      setUser({ email: sessionUser.email, walletAddress: sessionUser.walletAddress });
+      router.replace(getPostLoginPath(sessionUser.role));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [router]);
 
   const handleEmailLogin = () => {
     if (!email.trim()) {
@@ -146,53 +147,6 @@ export function Web3AuthLogin() {
     }
     void login(LOGIN.SMS_PASSWORDLESS, phone.trim());
   };
-
-  const handleLogout = async () => {
-    try {
-      await logoutSession();
-    } catch {
-      // ignore logout failure
-    }
-    setUser(null);
-    if (web3authInstance) {
-      await web3authInstance.logout();
-      web3authInstance = null;
-    }
-  };
-
-  if (user) {
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full bg-white border border-zinc-200 rounded-lg p-6 space-y-6"
-      >
-        <div className="flex items-start space-x-3">
-          <div className="p-2 bg-zinc-100 rounded-full text-zinc-800">
-            <ShieldCheck className="w-5 h-5" />
-          </div>
-          <div className="space-y-1 flex-1">
-            <h3 className="text-sm font-semibold text-zinc-900">Successfully Signed In</h3>
-            <p className="text-xs font-mono text-zinc-500 break-all">{user.email}</p>
-          </div>
-        </div>
-
-        <div className="bg-zinc-50 rounded p-3 space-y-1 border border-zinc-100">
-          <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-400">Custodial Wallet Address</span>
-          <p className="text-xs font-mono text-zinc-700 break-all select-all">{user.walletAddress}</p>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => void handleLogout()}
-          className="w-full flex items-center justify-center space-x-2 py-2 border border-zinc-200 text-zinc-600 rounded hover:bg-zinc-50 hover:text-zinc-900 transition-colors text-sm font-medium"
-        >
-          <LogOut className="w-4 h-4" />
-          <span>Log out</span>
-        </button>
-      </motion.div>
-    );
-  }
 
   return (
     <div className="w-full bg-white border border-zinc-200 rounded-lg p-6 space-y-6">

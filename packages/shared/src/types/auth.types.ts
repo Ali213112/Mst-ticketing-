@@ -16,4 +16,5 @@ export interface AuthUserResponse {
   orgIds: string[];
   firstName: string | null;
   lastName: string | null;
+  phoneNumber: string | null;
 }

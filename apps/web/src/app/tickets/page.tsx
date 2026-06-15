@@ -8,6 +8,7 @@ import {
   ArrowRight,
   RefreshCw,
   QrCode,
+  Download,
   Send,
   Tag,
   AlertCircle,
@@ -25,9 +26,11 @@ import {
   transferTicket,
   listTicketForResale,
   cancelResaleListing,
+  downloadTicketPdf,
   type TicketSummary
 } from '@/lib/api';
 import Navbar from '@/components/layout/Navbar';
+import { ContractAddressRow, ContractExplorerLink } from '@/components/blockchain/ContractExplorerLink';
 
 export default function MyTicketsPage() {
   const [tickets, setTickets] = useState<TicketSummary[]>([]);
@@ -46,6 +49,7 @@ export default function MyTicketsPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   // Poll intervals
   const [timerId, setTimerId] = useState<NodeJS.Timeout | null>(null);
@@ -277,7 +281,11 @@ export default function MyTicketsPage() {
                   </div>
 
                   <div className="flex items-center justify-between text-[10px] text-zinc-400 font-mono border-t border-zinc-50 pt-3 mt-4">
-                    <span className="truncate max-w-[140px]">Addr: {ticket.contractAddress}</span>
+                    <ContractAddressRow
+                      label="Addr:"
+                      address={ticket.contractAddress}
+                      className="max-w-[160px]"
+                    />
                     <span className="text-zinc-900 font-semibold group-hover:underline flex items-center space-x-0.5">
                       <span>MANAGE</span>
                       <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
@@ -314,8 +322,12 @@ export default function MyTicketsPage() {
                   <h3 className="font-bold font-mono text-zinc-900 text-lg uppercase tracking-tight">
                     TICKET VERIFICATION
                   </h3>
-                  <p className="text-xs text-zinc-400 font-mono">
-                    Token ID #{selectedTicket.tokenId} · Status: {selectedTicket.status.toUpperCase()}
+                  <p className="text-xs text-zinc-400 font-mono flex items-center gap-1 flex-wrap">
+                    <span>Token ID #{selectedTicket.tokenId} · Status: {selectedTicket.status.toUpperCase()}</span>
+                    <ContractExplorerLink
+                      value={selectedTicket.contractAddress}
+                      stopPropagation={false}
+                    />
                   </p>
                 </div>
 
@@ -391,6 +403,25 @@ export default function MyTicketsPage() {
                 {/* Forms Section (only for Valid status) */}
                 {selectedTicket.status === 'valid' && (
                   <div className="border-t border-zinc-100 pt-6 space-y-6">
+                    <button
+                      type="button"
+                      disabled={pdfLoading}
+                      onClick={async () => {
+                        if (!selectedTicket) return;
+                        setPdfLoading(true);
+                        try {
+                          await downloadTicketPdf(selectedTicket.id);
+                        } catch {
+                          setActionError('PDF download failed');
+                        } finally {
+                          setPdfLoading(false);
+                        }
+                      }}
+                      className="w-full flex items-center justify-center gap-2 py-2 border border-zinc-200 rounded text-xs font-mono font-bold uppercase hover:bg-zinc-50"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      {pdfLoading ? 'Generating…' : 'Download ticket PDF'}
+                    </button>
                     {/* Action Selector */}
                     <div className="grid grid-cols-2 gap-4">
                       {/* Gifting / Transfer Form */}

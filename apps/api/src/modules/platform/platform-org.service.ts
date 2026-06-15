@@ -1,8 +1,11 @@
+import { randomBytes } from 'crypto';
 import { z } from 'zod';
+import { ROLES } from '@ticketchain/shared';
 import { pool } from '../../shared/db/postgres.service.js';
 import { parsePagination } from '../../shared/utils/pagination.js';
 import { slugify } from '../../shared/utils/slug.js';
 import {
+  createInvite,
   createOrganisation,
   findOrganisationById,
   findOrganisationBySlug,
@@ -15,14 +18,26 @@ import {
   verifyOrganisationKyc,
 } from '../org/org.repository.js';
 
+const orgTypeSchema = z.enum(['promoter', 'venue', 'university', 'sports', 'corporate', 'other']);
+
 const createOrgSchema = z.object({
   name: z.string().min(2).max(255),
   slug: z.string().regex(/^[a-z0-9-]+$/).optional(),
   description: z.string().max(5000).optional(),
   superAdminEmail: z.string().email(),
+  founderName: z.string().min(1).max(255),
+  founderPhone: z.string().max(20).optional(),
   country: z.string().max(100).optional(),
+  state: z.string().max(100).optional(),
   city: z.string().max(100).optional(),
+  postalCode: z.string().max(20).optional(),
+  orgType: orgTypeSchema,
+  registrationNumber: z.string().max(100).optional(),
+  taxId: z.string().max(50).optional(),
+  gstNumber: z.string().max(50).optional(),
   subscriptionPlan: z.enum(['starter', 'growth', 'enterprise']).optional(),
+  platformCommissionBps: z.number().int().min(0).max(10000).optional(),
+  platformNotes: z.string().max(5000).optional(),
 });
 
 const updateOrgSchema = z.object({
@@ -31,9 +46,16 @@ const updateOrgSchema = z.object({
   logoUrl: z.string().url().optional(),
   websiteUrl: z.string().url().optional(),
   country: z.string().max(100).optional(),
+  state: z.string().max(100).optional(),
   city: z.string().max(100).optional(),
+  postalCode: z.string().max(20).optional(),
+  orgType: orgTypeSchema.optional(),
+  registrationNumber: z.string().max(100).optional(),
+  taxId: z.string().max(50).optional(),
+  gstNumber: z.string().max(50).optional(),
   subscriptionPlan: z.enum(['starter', 'growth', 'enterprise']).optional(),
   platformCommissionBps: z.number().int().min(0).max(10000).optional(),
+  platformNotes: z.string().max(5000).optional(),
 });
 
 const statusSchema = z.object({
@@ -43,6 +65,8 @@ const statusSchema = z.object({
 const verifySchema = z.object({
   action: z.enum(['approve', 'reject']),
 });
+
+const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
 export async function platformListOrganisations(query: Record<string, string | undefined>) {
   const { page, limit, offset } = parsePagination(query);
@@ -54,49 +78,83 @@ export async function platformListOrganisations(query: Record<string, string | u
   return { rows, meta: { page, limit, total } };
 }
 
-export async function platformCreateOrganisation(body: unknown) {
+export async function platformCreateOrganisation(
+  body: unknown,
+  platformAdminId: string
+): Promise<
+  | { org: Awaited<ReturnType<typeof createOrganisation>>; founderInvite?: { inviteToken: string; inviteUrl: string }; status: 201 }
+  | { error: string; status: number }
+> {
   const parsed = createOrgSchema.safeParse(body);
   if (!parsed.success) {
-    return { error: 'Invalid request', status: 400 as const };
+    return { error: 'Invalid request', status: 400 };
   }
 
   const data = parsed.data;
-  const founder = await findUserByEmail(data.superAdminEmail);
-  if (!founder) {
-    return {
-      error: 'Founder user not found — they must register via Web3Auth first',
-      status: 400 as const,
-    };
-  }
+  const founderEmail = data.superAdminEmail.toLowerCase();
+  const founder = await findUserByEmail(founderEmail);
 
-  if (await userHasOrgAsSuperAdmin(founder.id)) {
-    return { error: 'User is already a super admin of another organisation', status: 409 as const };
+  if (founder && (await userHasOrgAsSuperAdmin(founder.id))) {
+    return { error: 'User is already a super admin of another organisation', status: 409 };
   }
 
   const slug = data.slug ?? slugify(data.name);
   if (!slug) {
-    return { error: 'Could not generate a valid slug', status: 400 as const };
+    return { error: 'Could not generate a valid slug', status: 400 };
   }
 
   if (await findOrganisationBySlug(slug)) {
-    return { error: 'Organisation slug already exists', status: 409 as const };
+    return { error: 'Organisation slug already exists', status: 409 };
   }
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
     const org = await createOrganisation(client, {
       name: data.name,
       slug,
       description: data.description,
-      superAdminId: founder.id,
-      superAdminWalletAddress: founder.wallet_address,
+      superAdminId: founder?.id ?? null,
+      superAdminWalletAddress: founder?.wallet_address ?? null,
       country: data.country,
+      state: data.state,
       city: data.city,
+      postalCode: data.postalCode,
+      orgType: data.orgType,
+      taxId: data.taxId,
+      gstNumber: data.gstNumber,
+      registrationNumber: data.registrationNumber,
+      founderName: data.founderName,
+      founderPhone: data.founderPhone,
+      pendingFounderEmail: founder ? undefined : founderEmail,
+      platformNotes: data.platformNotes,
+      platformCommissionBps: data.platformCommissionBps,
       subscriptionPlan: data.subscriptionPlan,
     });
+
+    let founderInvite: { inviteToken: string; inviteUrl: string } | undefined;
+
+    if (!founder) {
+      const inviteToken = randomBytes(32).toString('hex');
+      const invite = await createInvite({
+        orgId: org.id,
+        invitedById: platformAdminId,
+        inviteeEmail: founderEmail,
+        inviteeName: data.founderName,
+        roleToAssign: ROLES.SUPER_ADMIN,
+        inviteToken,
+        expiresAt: new Date(Date.now() + INVITE_TTL_MS),
+        includeToken: true,
+      });
+      founderInvite = {
+        inviteToken: invite.inviteToken ?? inviteToken,
+        inviteUrl: `/login?invite=${invite.inviteToken ?? inviteToken}`,
+      };
+    }
+
     await client.query('COMMIT');
-    return { org, status: 201 as const };
+    return { org, founderInvite, status: 201 };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -116,15 +174,27 @@ export async function platformUpdateOrganisation(orgId: string, body: unknown) {
   if (!parsed.success) return { error: 'Invalid request', status: 400 as const };
 
   const fields: Record<string, unknown> = {};
-  if (parsed.data.name !== undefined) fields.name = parsed.data.name;
-  if (parsed.data.description !== undefined) fields.description = parsed.data.description;
-  if (parsed.data.logoUrl !== undefined) fields.logo_url = parsed.data.logoUrl;
-  if (parsed.data.websiteUrl !== undefined) fields.website_url = parsed.data.websiteUrl;
-  if (parsed.data.country !== undefined) fields.country = parsed.data.country;
-  if (parsed.data.city !== undefined) fields.city = parsed.data.city;
-  if (parsed.data.subscriptionPlan !== undefined) fields.subscription_plan = parsed.data.subscriptionPlan;
-  if (parsed.data.platformCommissionBps !== undefined) {
-    fields.platform_commission_bps = parsed.data.platformCommissionBps;
+  const map: Record<string, string> = {
+    name: 'name',
+    description: 'description',
+    logoUrl: 'logo_url',
+    websiteUrl: 'website_url',
+    country: 'country',
+    state: 'state',
+    city: 'city',
+    postalCode: 'postal_code',
+    orgType: 'org_type',
+    registrationNumber: 'registration_number',
+    taxId: 'tax_id',
+    gstNumber: 'gst_number',
+    subscriptionPlan: 'subscription_plan',
+    platformCommissionBps: 'platform_commission_bps',
+    platformNotes: 'platform_notes',
+  };
+
+  for (const [key, col] of Object.entries(map)) {
+    const val = parsed.data[key as keyof typeof parsed.data];
+    if (val !== undefined) fields[col] = val;
   }
 
   const org = await updateOrganisation(orgId, fields);

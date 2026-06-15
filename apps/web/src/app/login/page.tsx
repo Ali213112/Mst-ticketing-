@@ -1,20 +1,32 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Web3AuthLogin } from '@/components/Web3AuthLogin';
 import Navbar from '@/components/layout/Navbar';
-import { ShieldAlert, Shield } from 'lucide-react';
+import { ShieldAlert } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { fetchWithAuth } from '@/lib/api';
+import { fetchWithAuth, getMe, getPostLoginPath } from '@/lib/api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000';
 
 export default function LoginPage() {
+  const router = useRouter();
   const [showPlatformLogin, setShowPlatformLogin] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (showPlatformLogin) return;
+    void (async () => {
+      const me = await getMe();
+      if (me) {
+        router.replace(getPostLoginPath(me.role));
+      }
+    })();
+  }, [router, showPlatformLogin]);
 
   const handlePlatformLogin = async (e: React.FormEvent) => {
     e.preventDefault();

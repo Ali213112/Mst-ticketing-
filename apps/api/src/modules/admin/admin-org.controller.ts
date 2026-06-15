@@ -8,6 +8,7 @@ import {
   adminSubmitKyc,
   adminUpdateMember,
   adminUpdateOrganisation,
+  adminUploadOrgAsset,
 } from './admin-org.service.js';
 
 export async function getOrganisationHandler(req: Request, res: Response): Promise<void> {
@@ -93,6 +94,16 @@ export async function removeMemberHandler(req: Request, res: Response): Promise<
     return;
   }
   res.json({ success: true });
+}
+
+export async function uploadOrgAssetHandler(req: Request, res: Response): Promise<void> {
+  const orgId = req.orgId!;
+  const result = await adminUploadOrgAsset(orgId, req.body);
+  if ('error' in result) {
+    res.status(result.status ?? 400).json({ success: false, error: result.error });
+    return;
+  }
+  res.json({ success: true, data: result });
 }
 
 export async function listInvitesHandler(req: Request, res: Response): Promise<void> {

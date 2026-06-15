@@ -24,10 +24,21 @@ async function main() {
   const eventTicketsAddress = await eventTickets.getAddress();
   console.log('EventTickets1155 (sample):', eventTicketsAddress);
 
+  const marketplace = await ethers.deployContract('TicketMarketplace', [
+    deployer.address,
+    DEMO_ORG_WALLET,
+    200,
+    500,
+  ]);
+  await marketplace.waitForDeployment();
+  const marketplaceAddress = await marketplace.getAddress();
+  console.log('TicketMarketplace:', marketplaceAddress);
+
   writeDeployOutput({
     network: 'hardhat',
     orgRegistry: orgRegistryAddress,
     sampleEventTickets: eventTicketsAddress,
+    ticketMarketplace: marketplaceAddress,
   });
 }
 
@@ -39,6 +50,9 @@ function writeDeployOutput(data: Record<string, string>) {
   console.log(`\nSaved deployment addresses to ${file}`);
   console.log('\nAdd to .env:');
   console.log(`ORG_REGISTRY_ADDRESS=${data.orgRegistry}`);
+  if (data.ticketMarketplace) {
+    console.log(`MARKETPLACE_CONTRACT_ADDRESS=${data.ticketMarketplace}`);
+  }
 }
 
 main().catch((err) => {

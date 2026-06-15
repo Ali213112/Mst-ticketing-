@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, MapPin, Calendar, Compass, Grid, SlidersHorizontal, ChevronRight } from 'lucide-react';
-import { listEvents, type EventSummary } from '@/lib/api';
+import { listEvents, listFeaturedEvents, type EventSummary } from '@/lib/api';
+import { toDisplayImageUrl } from '@/lib/media';
 import Navbar from '@/components/layout/Navbar';
 
 export default function EventsPage() {
   const [events, setEvents] = useState<EventSummary[]>([]);
+  const [featured, setFeatured] = useState<EventSummary[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<EventSummary[]>([]);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -21,8 +23,12 @@ export default function EventsPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const data = await listEvents();
+        const [data, featuredData] = await Promise.all([
+          listEvents(),
+          listFeaturedEvents().catch(() => [] as EventSummary[]),
+        ]);
         setEvents(data);
+        setFeatured(featuredData);
         setFilteredEvents(data);
       } catch (err) {
         console.error('Failed to load events', err);
@@ -83,6 +89,44 @@ export default function EventsPage() {
             </p>
           </div>
         </section>
+
+        {/* Featured events */}
+        {featured.length > 0 && !search && !selectedCategory && !selectedCity && (
+          <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+            <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-zinc-400 mb-4">
+              Featured
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {featured.slice(0, 3).map((e) => (
+                <Link
+                  key={e.id}
+                  href={`/events/${e.id}`}
+                  className="group bg-white border border-zinc-200 rounded overflow-hidden hover:border-zinc-400 transition-colors"
+                >
+                  {e.imageIpfsUrl && (
+                    <div
+                      className="h-32 bg-zinc-100 bg-cover bg-center"
+                      style={{ backgroundImage: `url(${toDisplayImageUrl(e.imageIpfsUrl)})` }}
+                    />
+                  )}
+                  <div className="p-4 space-y-1">
+                    <p className="font-mono font-bold text-sm text-zinc-950 group-hover:underline">{e.name}</p>
+                    <p className="text-xs text-zinc-500 flex items-center gap-1">
+                      <Calendar className="w-3 h-3" />
+                      {new Date(e.eventDate).toLocaleDateString()}
+                      {e.city && (
+                        <>
+                          <MapPin className="w-3 h-3 ml-2" />
+                          {e.city}
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Content Section */}
         <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
@@ -203,7 +247,9 @@ export default function EventsPage() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <AnimatePresence>
-                    {filteredEvents.map((event) => (
+                    {filteredEvents.map((event) => {
+                      const imageSrc = toDisplayImageUrl(event.imageIpfsUrl);
+                      return (
                       <motion.div
                         key={event.id}
                         layout
@@ -215,9 +261,9 @@ export default function EventsPage() {
                         <div>
                           {/* Image box */}
                           <div className="aspect-video bg-zinc-100 relative overflow-hidden border-b border-zinc-100 flex items-center justify-center">
-                            {event.imageIpfsUrl ? (
+                            {imageSrc ? (
                               <img
-                                src={event.imageIpfsUrl}
+                                src={imageSrc}
                                 alt={event.name}
                                 className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500"
                               />
@@ -264,7 +310,8 @@ export default function EventsPage() {
                           </Link>
                         </div>
                       </motion.div>
-                    ))}
+                    );
+                    })}
                   </AnimatePresence>
                 </div>
               )}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Calendar,
@@ -13,14 +14,19 @@ import {
   RefreshCw,
   ChevronRight,
   Sparkles,
-  LayoutDashboard
+  LayoutDashboard,
+  ShieldAlert,
+  Info,
 } from 'lucide-react';
-import { getMe, getAdminEvents, createAdminEvent, type AuthUser, type AdminEventSummary } from '@/lib/api';
+import { getMe, getAdminEvents, createAdminEvent, getOnboardingStatus, type AuthUser, type AdminEventSummary, type OnboardingStatus } from '@/lib/api';
 import Sidebar from '@/components/layout/Sidebar';
+import { ContractExplorerLink } from '@/components/blockchain/ContractExplorerLink';
 
 export default function AdminEventsPage() {
+  const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [events, setEvents] = useState<AdminEventSummary[]>([]);
+  const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,9 +35,18 @@ export default function AdminEventsPage() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [eventDate, setEventDate] = useState('');
+  const [eventEndDate, setEventEndDate] = useState('');
   const [venueName, setVenueName] = useState('');
   const [city, setCity] = useState('');
   const [category, setCategory] = useState('Music');
+  const [ageRestriction, setAgeRestriction] = useState('');
+  const [tags, setTags] = useState('');
+  const [resaleEnabled, setResaleEnabled] = useState(false);
+  const [usePriceCap, setUsePriceCap] = useState(false);
+  const [resalePriceCapPercent, setResalePriceCapPercent] = useState(150);
+  const [useResaleRoyalty, setUseResaleRoyalty] = useState(false);
+  const [resaleRoyaltyPercent, setResaleRoyaltyPercent] = useState(5);
+  const [zones, setZones] = useState('');
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -54,7 +69,11 @@ export default function AdminEventsPage() {
           return;
         }
         setUser(me);
-        await fetchEvents();
+        const [, ob] = await Promise.all([
+          fetchEvents(),
+          getOnboardingStatus().catch(() => null),
+        ]);
+        setOnboarding(ob);
       } catch (err) {
         console.error(err);
         setError('Failed to load events.');
@@ -71,31 +90,53 @@ export default function AdminEventsPage() {
       return;
     }
 
+    const start = new Date(eventDate);
+    if (Number.isNaN(start.getTime())) {
+      setFormError('Enter a valid start date and time.');
+      return;
+    }
+    let endIso: string | undefined;
+    if (eventEndDate) {
+      const end = new Date(eventEndDate);
+      if (Number.isNaN(end.getTime())) {
+        setFormError('Enter a valid end date and time.');
+        return;
+      }
+      if (end < start) {
+        setFormError('End date must be after the start date.');
+        return;
+      }
+      endIso = end.toISOString();
+    }
+
+    const ageNum = ageRestriction.trim() ? Number(ageRestriction) : undefined;
+    if (ageNum !== undefined && (Number.isNaN(ageNum) || ageNum < 0 || ageNum > 99)) {
+      setFormError('Age restriction must be between 0 and 99.');
+      return;
+    }
+
     setFormLoading(true);
     setFormError(null);
     try {
-      const result = await createAdminEvent({
+      const created = await createAdminEvent({
         name: name.trim(),
-        description: description.trim(),
-        eventDate: new Date(eventDate).toISOString(),
+        description: description.trim() || undefined,
+        eventDate: start.toISOString(),
+        eventEndDate: endIso,
         venueName: venueName.trim(),
         city: city.trim(),
         category,
+        ageRestriction: ageNum,
+        tags: tags.trim() ? tags.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
+        resaleEnabled,
+        resalePriceCapBps:
+          resaleEnabled && usePriceCap ? Math.round(resalePriceCapPercent * 100) : undefined,
+        resaleRoyaltyBps:
+          resaleEnabled && useResaleRoyalty ? Math.round(resaleRoyaltyPercent * 100) : undefined,
+        zones: zones.trim() ? zones.split(',').map((z) => z.trim()).filter(Boolean) : undefined,
       });
 
-      // Clear form & toggle
-      setName('');
-      setDescription('');
-      setEventDate('');
-      setVenueName('');
-      setCity('');
-      setShowWizard(false);
-
-      // Re-fetch events
-      await fetchEvents();
-
-      // Alert or navigate to detail
-      alert('Event record created successfully! Configure ticket tiers next.');
+      router.push(`/admin/events/${created.id}`);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Event creation failed');
     } finally {
@@ -142,6 +183,31 @@ export default function AdminEventsPage() {
             </div>
           ) : (
             <div className="space-y-6">
+              {/* KYC verification banner */}
+              {onboarding && !onboarding.kycVerified && (
+                <div className="flex items-start space-x-3 rounded border border-amber-200 bg-amber-50 p-4">
+                  <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                  <div className="space-y-1">
+                    <p className="text-xs font-mono font-bold text-amber-800 uppercase tracking-wide">
+                      KYC verification pending
+                    </p>
+                    <p className="text-xs font-mono text-amber-700 leading-relaxed">
+                      {onboarding.kycSubmitted
+                        ? 'Your KYC is under review. You can create and configure draft events now — deploying them on-chain will be unlocked once the platform verifies your organisation.'
+                        : 'Your organisation is not yet verified. You can create and configure draft events in advance. Deploying events on the blockchain requires KYC approval from the platform.'}
+                    </p>
+                    {!onboarding.kycSubmitted && (
+                      <a
+                        href="/admin/onboarding"
+                        className="inline-block mt-1 text-[10px] font-mono font-bold text-amber-800 underline hover:text-amber-900"
+                      >
+                        Complete onboarding →
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Creator Form wizard modal/drawer */}
               <AnimatePresence>
                 {showWizard && (
@@ -190,12 +256,35 @@ export default function AdminEventsPage() {
                         </div>
 
                         <div className="space-y-1">
-                          <label className="block text-[10px] font-mono font-bold uppercase text-zinc-400">Event date &amp; Time*</label>
+                          <label className="block text-[10px] font-mono font-bold uppercase text-zinc-400">Start date &amp; time*</label>
                           <input
                             type="datetime-local"
                             required
                             value={eventDate}
                             onChange={(e) => setEventDate(e.target.value)}
+                            className="w-full px-3 py-1.5 border border-zinc-200 rounded text-xs font-mono bg-white focus:outline-none focus:border-zinc-900"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="block text-[10px] font-mono font-bold uppercase text-zinc-400">End date &amp; time</label>
+                          <input
+                            type="datetime-local"
+                            value={eventEndDate}
+                            onChange={(e) => setEventEndDate(e.target.value)}
+                            className="w-full px-3 py-1.5 border border-zinc-200 rounded text-xs font-mono bg-white focus:outline-none focus:border-zinc-900"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="block text-[10px] font-mono font-bold uppercase text-zinc-400">Age restriction</label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={99}
+                            value={ageRestriction}
+                            onChange={(e) => setAgeRestriction(e.target.value)}
+                            placeholder="e.g. 18"
                             className="w-full px-3 py-1.5 border border-zinc-200 rounded text-xs font-mono bg-white focus:outline-none focus:border-zinc-900"
                           />
                         </div>
@@ -234,6 +323,111 @@ export default function AdminEventsPage() {
                           placeholder="Provide details about registration rules, timing, guidelines..."
                           className="w-full px-3 py-1.5 border border-zinc-200 rounded text-xs font-mono bg-white placeholder-zinc-300 focus:outline-none focus:border-zinc-900"
                         />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-mono font-bold uppercase text-zinc-400">Tags (comma-separated)</label>
+                        <input
+                          type="text"
+                          value={tags}
+                          onChange={(e) => setTags(e.target.value)}
+                          placeholder="live, outdoor, vip"
+                          className="w-full px-3 py-1.5 border border-zinc-200 rounded text-xs font-mono bg-white focus:outline-none focus:border-zinc-900"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-mono font-bold uppercase text-zinc-400">Access zones (comma-separated)</label>
+                        <input
+                          type="text"
+                          value={zones}
+                          onChange={(e) => setZones(e.target.value)}
+                          placeholder="Gate A, VIP Lounge, Backstage"
+                          className="w-full px-3 py-1.5 border border-zinc-200 rounded text-xs font-mono bg-white focus:outline-none focus:border-zinc-900"
+                        />
+                      </div>
+
+                      <div className="border border-zinc-100 rounded p-4 space-y-3">
+                        <label className="flex items-center gap-2 text-xs font-mono font-bold text-zinc-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={resaleEnabled}
+                            onChange={(e) => {
+                              setResaleEnabled(e.target.checked);
+                              if (!e.target.checked) {
+                                setUsePriceCap(false);
+                                setUseResaleRoyalty(false);
+                              }
+                            }}
+                            className="rounded"
+                          />
+                          Enable ticket resale
+                        </label>
+                        {resaleEnabled && (
+                          <div className="space-y-3 pl-1 border-l-2 border-zinc-100 ml-1">
+                            <p className="text-[9px] text-zinc-400 font-mono">
+                              Choose one or both resale rules — leave unchecked to use platform defaults.
+                            </p>
+
+                            <div className="space-y-2">
+                              <label className="flex items-center gap-2 text-xs font-mono text-zinc-700 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={usePriceCap}
+                                  onChange={(e) => setUsePriceCap(e.target.checked)}
+                                  className="rounded"
+                                />
+                                Set max resale price (price cap)
+                              </label>
+                              {usePriceCap && (
+                                <div className="space-y-1 ml-6">
+                                  <label className="block text-[10px] font-mono font-bold uppercase text-zinc-400">
+                                    Max resale price (% of face value)
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min={100}
+                                    max={1000}
+                                    step={1}
+                                    value={resalePriceCapPercent}
+                                    onChange={(e) => setResalePriceCapPercent(Number(e.target.value))}
+                                    className="w-full px-3 py-1.5 border border-zinc-200 rounded text-xs font-mono bg-white focus:outline-none focus:border-zinc-900"
+                                  />
+                                  <p className="text-[9px] text-zinc-400">150 = sellers can list up to 150% of the original ticket price</p>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="space-y-2">
+                              <label className="flex items-center gap-2 text-xs font-mono text-zinc-700 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={useResaleRoyalty}
+                                  onChange={(e) => setUseResaleRoyalty(e.target.checked)}
+                                  className="rounded"
+                                />
+                                Set resale royalty (% to organisation)
+                              </label>
+                              {useResaleRoyalty && (
+                                <div className="space-y-1 ml-6">
+                                  <label className="block text-[10px] font-mono font-bold uppercase text-zinc-400">
+                                    Royalty on each resale (%)
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    step={0.1}
+                                    value={resaleRoyaltyPercent}
+                                    onChange={(e) => setResaleRoyaltyPercent(Number(e.target.value))}
+                                    className="w-full px-3 py-1.5 border border-zinc-200 rounded text-xs font-mono bg-white focus:outline-none focus:border-zinc-900"
+                                  />
+                                  <p className="text-[9px] text-zinc-400">5 = your organisation earns 5% of every resale transaction</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {formError && (
@@ -323,8 +517,15 @@ export default function AdminEventsPage() {
                         </div>
                         <div className="space-y-0.5 text-right">
                           <span>CONTRACT DEPLOY</span>
-                          <p className="font-bold text-zinc-900 truncate">
-                            {event.contractAddress ? 'Escrow active' : 'TBD'}
+                          <p className="font-bold text-zinc-900 truncate flex items-center justify-end gap-1">
+                            {event.contractAddress ? (
+                              <>
+                                <span>Escrow active</span>
+                                <ContractExplorerLink value={event.contractAddress} />
+                              </>
+                            ) : (
+                              'TBD'
+                            )}
                           </p>
                         </div>
                       </div>

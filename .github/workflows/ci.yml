@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: ticketchain
+          POSTGRES_USER: ticketchain_user
+          POSTGRES_PASSWORD: dev_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ticketchain_user -d ticketchain"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://ticketchain_user:dev_password@localhost:5432/ticketchain
+      REDIS_URL: redis://localhost:6379
+      WEB3AUTH_CLIENT_ID: ci-test-client-id
+      NEXT_PUBLIC_WEB3AUTH_CLIENT_ID: ci-test-client-id
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build shared package
+        run: pnpm --filter @ticketchain/shared build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Generate JWT keys
+        run: pnpm --filter @ticketchain/api generate:keys
+
+      - name: Run migrations
+        run: pnpm migrate
+
+      - name: Compile contracts
+        run: pnpm contracts:compile
+
+      - name: Contract tests
+        run: pnpm contracts:test
+
+      - name: API integration smoke test
+        run: pnpm --filter @ticketchain/api test

@@ -15,8 +15,11 @@ import {
   AlertCircle,
   FileText,
   UserCheck,
-  Zap
+  Zap,
+  WifiOff,
+  Radio,
 } from 'lucide-react';
+import { decodeQrFromVideo } from '@/lib/qr-scanner';
 import {
   getMe,
   verifyCheckin,
@@ -27,6 +30,9 @@ import {
   type CheckinHistoryItem
 } from '@/lib/api';
 import Navbar from '@/components/layout/Navbar';
+import { fetchAndCacheSnapshot } from '@/lib/offline-checkin';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000';
 
 export default function CheckinConsolePage({ params }: { params: { eventId: string } }) {
   const eventId = params.eventId;
@@ -57,9 +63,13 @@ export default function CheckinConsolePage({ params }: { params: { eventId: stri
     };
   } | null>(null);
 
-  // Webcam access mockup
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const lastScanRef = useRef<string>('');
+  const scanCooldownRef = useRef(false);
   const [cameraActive, setCameraActive] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
+  const [nfcSupported, setNfcSupported] = useState(false);
 
   const fetchStatsAndHistory = async () => {
     try {
@@ -75,6 +85,19 @@ export default function CheckinConsolePage({ params }: { params: { eventId: stri
   };
 
   useEffect(() => {
+    setIsOffline(!navigator.onLine);
+    const onOnline = () => setIsOffline(false);
+    const onOffline = () => setIsOffline(true);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    setNfcSupported(typeof window !== 'undefined' && 'NDEFReader' in window);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     void (async () => {
       try {
         const me = await getMe();
@@ -84,7 +107,10 @@ export default function CheckinConsolePage({ params }: { params: { eventId: stri
           return;
         }
         setUser(me);
-        await fetchStatsAndHistory();
+        await Promise.all([
+          fetchStatsAndHistory(),
+          fetchAndCacheSnapshot(eventId, API_URL).catch(() => undefined),
+        ]);
       } catch (err) {
         console.error(err);
         setError('Failed to load check-in console.');
@@ -92,7 +118,14 @@ export default function CheckinConsolePage({ params }: { params: { eventId: stri
         setLoading(false);
       }
     })();
-  }, []);
+  }, [eventId]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void fetchStatsAndHistory();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [eventId]);
 
   // Handle webcam video setup
   useEffect(() => {
@@ -123,6 +156,55 @@ export default function CheckinConsolePage({ params }: { params: { eventId: stri
       setCameraActive(false);
     };
   }, [selectedMethod, user]);
+
+  useEffect(() => {
+    if (selectedMethod !== 'camera' || !cameraActive || !user) return;
+
+    let rafId = 0;
+    const tick = () => {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      if (video && canvas && !scanCooldownRef.current && !verifyLoading) {
+        const decoded = decodeQrFromVideo(video, canvas);
+        if (decoded && decoded !== lastScanRef.current) {
+          lastScanRef.current = decoded;
+          scanCooldownRef.current = true;
+          void handleScanSubmit(decoded).finally(() => {
+            setTimeout(() => {
+              scanCooldownRef.current = false;
+            }, 2000);
+          });
+        }
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [selectedMethod, cameraActive, user, verifyLoading]);
+
+  const handleNfcScan = async () => {
+    // Web NFC API — browser support varies (mainly Android Chrome)
+    const NfcReader = (window as unknown as { NDEFReader?: new () => {
+      scan: () => Promise<void>;
+      addEventListener: (ev: string, cb: (e: { message: { records: Array<{ recordType: string; data: DataView }> } }) => void) => void;
+    } }).NDEFReader;
+    if (!NfcReader) return;
+    try {
+      const reader = new NfcReader();
+      await reader.scan();
+      reader.addEventListener('reading', (event) => {
+        for (const record of event.message.records) {
+          if (record.recordType === 'text') {
+            const text = new TextDecoder().decode(record.data);
+            void handleScanSubmit(text);
+            return;
+          }
+        }
+      });
+    } catch (err) {
+      console.warn('NFC scan failed', err);
+    }
+  };
 
   const handleScanSubmit = async (payload: string) => {
     if (!payload.trim()) return;
@@ -223,11 +305,19 @@ export default function CheckinConsolePage({ params }: { params: { eventId: stri
               <span>BACK TO ASSIGNED EVENTS</span>
             </Link>
 
-            {stats && (
-              <div className="text-xs font-mono text-zinc-500 flex items-center space-x-4">
-                <span>CHECKED IN: <strong className="text-zinc-950">{stats.totalCheckedIn} / {stats.totalTicketsSold}</strong></span>
-              </div>
-            )}
+            <div className="flex items-center gap-4">
+              {isOffline && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold uppercase text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded">
+                  <WifiOff className="w-3 h-3" />
+                  Offline mode
+                </span>
+              )}
+              {stats && (
+                <div className="text-xs font-mono text-zinc-500 flex items-center space-x-4">
+                  <span>LIVE: <strong className="text-zinc-950">{stats.totalCheckedIn} / {stats.totalTicketsSold}</strong></span>
+                </div>
+              )}
+            </div>
           </div>
         </section>
 
@@ -288,10 +378,11 @@ export default function CheckinConsolePage({ params }: { params: { eventId: stri
                       <div className="w-full max-w-sm space-y-4">
                         {/* Video frame mockup */}
                         <div className="aspect-[4/3] bg-zinc-900 rounded border border-zinc-800 relative overflow-hidden flex items-center justify-center">
+                          <canvas ref={canvasRef} className="hidden" />
                           {cameraActive ? (
                             <video
                               ref={videoRef}
-                              className="w-full h-full object-cover grayscale"
+                              className="w-full h-full object-cover"
                               playsInline
                               muted
                             />
@@ -307,10 +398,23 @@ export default function CheckinConsolePage({ params }: { params: { eventId: stri
                           </div>
                         </div>
 
+                        {nfcSupported && (
+                          <button
+                            type="button"
+                            onClick={() => void handleNfcScan()}
+                            className="w-full py-2 border border-zinc-200 rounded text-xs font-mono font-bold uppercase flex items-center justify-center gap-2 hover:bg-zinc-50"
+                          >
+                            <Radio className="w-3.5 h-3.5" />
+                            Scan NFC tag
+                          </button>
+                        )}
+                        <p className="text-[10px] font-mono text-zinc-400 text-center">
+                          Point camera at ticket QR — auto-detects codes
+                        </p>
                         {/* Simulator controls for rapid check testing */}
                         <div className="space-y-2">
                           <span className="block text-[10px] font-mono font-bold uppercase text-zinc-400 text-center">
-                            Gate verification simulator controls
+                            Test simulator
                           </span>
                           <div className="grid grid-cols-2 gap-2">
                             <button

@@ -220,6 +220,17 @@ export async function listPublishedEvents(params: {
   };
 }
 
+export async function listFeaturedEvents(limit = 6): Promise<EventSummary[]> {
+  const result = await pool.query<EventRow>(
+    `SELECT ${EVENT_SELECT} FROM events
+     WHERE status IN ('published', 'live') AND deleted_at IS NULL AND event_date >= NOW()
+     ORDER BY total_tickets_sold DESC, event_date ASC
+     LIMIT $1`,
+    [limit]
+  );
+  return result.rows.map(mapEventSummary);
+}
+
 export async function findEventById(
   eventId: string,
   orgId?: string

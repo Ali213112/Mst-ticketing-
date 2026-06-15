@@ -109,6 +109,7 @@ export async function verifyWeb3AuthLogin(
         orgIds,
         firstName: user.first_name,
         lastName: user.last_name,
+        phoneNumber: user.phone_number,
       },
     };
   } catch (error) {
@@ -177,6 +178,7 @@ export async function getMe(userId: string): Promise<AuthUserResponse | null> {
     orgIds,
     firstName: user.first_name,
     lastName: user.last_name,
+    phoneNumber: user.phone_number,
   };
 }
 
@@ -203,6 +205,7 @@ export async function getPlatformAdminMe(adminId: string): Promise<AuthUserRespo
     orgIds: [],
     firstName: admin.first_name,
     lastName: admin.last_name,
+    phoneNumber: null,
   };
 }
 
@@ -245,6 +248,7 @@ export async function acceptInviteSession(
       orgId: invite.orgId,
       role: invite.roleToAssign,
       assignedById: invite.invitedById,
+      walletAddress: user.wallet_address,
     });
     await client.query('COMMIT');
   } catch (error) {
@@ -280,6 +284,7 @@ export async function acceptInviteSession(
       orgIds,
       firstName: user.first_name,
       lastName: user.last_name,
+      phoneNumber: user.phone_number,
     },
   };
 }

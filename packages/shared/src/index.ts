@@ -12,11 +12,13 @@ export type { AccessTokenPayload, AuthUserResponse } from './types/auth.types.js
 export type {
   InviteResponse,
   InviteStatus,
+  OnboardingStatus,
   OrgMemberResponse,
   OrgMemberStatus,
   OrganisationDetail,
   OrganisationSummary,
   OrgStatus,
+  OrgType,
   OrgVerificationStatus,
   SubscriptionPlan,
 } from './types/org.types.js';

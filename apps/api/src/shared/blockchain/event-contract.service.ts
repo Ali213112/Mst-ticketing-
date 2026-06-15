@@ -143,6 +143,27 @@ export async function getDeployerAddress(): Promise<string> {
  * on the MST chain (receipt exists with status === 1).
  * Returns false if not yet mined or failed.
  */
+export async function adminTransferOnChain(params: {
+  contractAddress: string;
+  fromWallet: string;
+  toWallet: string;
+  tierIndex: number;
+  quantity?: number;
+}): Promise<string> {
+  const wallet = getDeployerWallet();
+  const { abi } = loadArtifact();
+  const contract = new Contract(params.contractAddress, abi, wallet);
+
+  const tx = await contract.adminTransfer(
+    params.fromWallet,
+    params.toWallet,
+    params.tierIndex,
+    params.quantity ?? 1
+  );
+  const receipt = await tx.wait();
+  return receipt.hash as string;
+}
+
 export async function checkTxConfirmed(txHash: string): Promise<boolean> {
   try {
     const provider = getEthersProvider();
