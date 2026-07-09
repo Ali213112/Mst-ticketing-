@@ -496,6 +496,7 @@ export async function browseEvents(query: Record<string, string | undefined>) {
     city: query.city,
     category: query.category,
     search: query.q,
+    sort: query.sort,
   });
   return { rows, meta: { page, limit, total } };
 }

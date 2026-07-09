@@ -7,7 +7,12 @@ import {
   findOrganisationBySlug,
   listOrganisations,
   listOrgMembers,
+  listInvitesForEmail,
 } from './org.repository.js';
+
+export async function getMyInvites(email: string) {
+  return listInvitesForEmail(email);
+}
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 

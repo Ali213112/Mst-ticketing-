@@ -4,6 +4,6 @@
 
 @layer base {
   body {
-    @apply bg-zinc-50 text-zinc-900 min-h-screen font-sans;
+    @apply bg-paper text-ink min-h-screen font-body antialiased;
   }
 }

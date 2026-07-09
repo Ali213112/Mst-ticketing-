@@ -10,6 +10,8 @@ export interface DbUser {
   first_name: string | null;
   last_name: string | null;
   phone_number: string | null;
+  bio: string | null;
+  profile_image: string | null;
   base_role: number;
 }
 
@@ -20,7 +22,7 @@ export interface OrgMembership {
 
 export async function findUserByWeb3AuthSub(sub: string): Promise<DbUser | null> {
   const result = await pool.query<DbUser>(
-    `SELECT id, web3auth_sub, email, wallet_address, first_name, last_name, phone_number, base_role
+    `SELECT id, web3auth_sub, email, wallet_address, first_name, last_name, phone_number, bio, profile_image, base_role
      FROM users WHERE web3auth_sub = $1 AND deleted_at IS NULL`,
     [sub]
   );
@@ -29,7 +31,7 @@ export async function findUserByWeb3AuthSub(sub: string): Promise<DbUser | null>
 
 export async function findUserByEmail(email: string): Promise<DbUser | null> {
   const result = await pool.query<DbUser>(
-    `SELECT id, web3auth_sub, email, wallet_address, first_name, last_name, phone_number, base_role
+    `SELECT id, web3auth_sub, email, wallet_address, first_name, last_name, phone_number, bio, profile_image, base_role
      FROM users WHERE LOWER(email) = LOWER($1) AND deleted_at IS NULL`,
     [email]
   );
@@ -38,7 +40,7 @@ export async function findUserByEmail(email: string): Promise<DbUser | null> {
 
 export async function findUserByWallet(walletAddress: string): Promise<DbUser | null> {
   const result = await pool.query<DbUser>(
-    `SELECT id, web3auth_sub, email, wallet_address, first_name, last_name, phone_number, base_role
+    `SELECT id, web3auth_sub, email, wallet_address, first_name, last_name, phone_number, bio, profile_image, base_role
      FROM users WHERE LOWER(wallet_address) = LOWER($1) AND deleted_at IS NULL`,
     [walletAddress]
   );
@@ -47,7 +49,7 @@ export async function findUserByWallet(walletAddress: string): Promise<DbUser | 
 
 export async function findUserById(userId: string): Promise<DbUser | null> {
   const result = await pool.query<DbUser>(
-    `SELECT id, web3auth_sub, email, wallet_address, first_name, last_name, phone_number, base_role
+    `SELECT id, web3auth_sub, email, wallet_address, first_name, last_name, phone_number, bio, profile_image, base_role
      FROM users WHERE id = $1 AND deleted_at IS NULL`,
     [userId]
   );
@@ -76,7 +78,7 @@ export async function createWeb3AuthUser(
   const result = await client.query<DbUser>(
     `INSERT INTO users (web3auth_sub, email, wallet_address, first_name, last_name, base_role)
      VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, web3auth_sub, email, wallet_address, first_name, last_name, phone_number, base_role`,
+     RETURNING id, web3auth_sub, email, wallet_address, first_name, last_name, phone_number, bio, profile_image, base_role`,
     [
       params.sub,
       params.email,

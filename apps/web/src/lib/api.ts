@@ -9,6 +9,8 @@ export interface AuthUser {
   firstName?: string | null;
   lastName?: string | null;
   phoneNumber?: string | null;
+  bio?: string | null;
+  profileImage?: string | null;
 }
 
 export function getPostLoginPath(role: number): string {
@@ -18,6 +20,7 @@ export function getPostLoginPath(role: number): string {
 export interface EventSummary {
   id: string;
   orgId?: string;
+  orgName?: string;
   name: string;
   category: string | null;
   city: string | null;
@@ -191,12 +194,19 @@ export async function fetchWithAuth(input: RequestInfo | URL, init?: RequestInit
 const fetch = fetchWithAuth;
 
 export async function verifySession(idToken: string, walletAddress: string): Promise<AuthUser> {
-  const res = await fetch(`${API_URL}/api/auth/verify`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ idToken, walletAddress }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/auth/verify`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, walletAddress }),
+    });
+  } catch {
+    throw new Error(
+      `Cannot reach the API at ${API_URL}. Ensure "pnpm run dev:api" is running and NEXT_PUBLIC_API_URL matches.`
+    );
+  }
 
   const parsed = await parseJson<AuthUser>(res);
   if (!parsed.ok || !parsed.data) {
@@ -217,8 +227,9 @@ export async function getMe(): Promise<AuthUser | null> {
   }
 }
 
-export async function listEvents(): Promise<EventSummary[]> {
-  const res = await fetch(`${API_URL}/api/events`, { next: { revalidate: 30 } });
+export async function listEvents(sort?: string): Promise<EventSummary[]> {
+  const url = sort ? `${API_URL}/api/events?sort=${sort}` : `${API_URL}/api/events`;
+  const res = await fetch(url, { next: { revalidate: 30 } });
   const parsed = await parseJson<EventSummary[]>(res);
   return parsed.data ?? [];
 }
@@ -397,6 +408,65 @@ export interface ReferralStats {
   rewardsCount: number;
 }
 
+export interface WalletInfo {
+  walletAddress: string;
+  balanceWei: string;
+  symbol: string;
+  chainId: number;
+  rpcUrl: string;
+}
+
+export async function getWalletBalance(): Promise<WalletInfo | null> {
+  const res = await fetch(`${API_URL}/api/profile/wallet`, { credentials: 'include', cache: 'no-store' });
+  if (!res.ok) return null;
+  const parsed = await parseJson<WalletInfo>(res);
+  return parsed.data ?? null;
+}
+
+export type FaucetResult =
+  | {
+      mode: 'in_app';
+      txHash: string;
+      amountWei: string;
+      targetAddress: string;
+      balanceWei: string;
+      symbol: string;
+    }
+  | {
+      mode: 'external';
+      externalUrl: string;
+      targetAddress: string;
+      message: string;
+    };
+
+export async function linkWalletToAccount(walletAddress: string): Promise<{ walletAddress: string }> {
+  const res = await fetch(`${API_URL}/api/profile/wallet/link`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ walletAddress }),
+  });
+  const parsed = await parseJson<{ walletAddress: string; user: AuthUser }>(res);
+  if (!parsed.ok || !parsed.data) {
+    throw new Error(parsed.error ?? 'Failed to link wallet');
+  }
+  return { walletAddress: parsed.data.walletAddress };
+}
+
+export async function requestFaucetFunds(targetAddress: string): Promise<FaucetResult> {
+  const res = await fetch(`${API_URL}/api/profile/faucet`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetAddress }),
+  });
+  const parsed = await parseJson<FaucetResult>(res);
+  if (!parsed.ok || !parsed.data) {
+    throw new Error(parsed.error ?? 'Faucet request failed');
+  }
+  return parsed.data;
+}
+
 export async function listMyRewards(): Promise<LoyaltyReward[]> {
   const res = await fetch(`${API_URL}/api/profile/rewards`, { credentials: 'include', cache: 'no-store' });
   const parsed = await parseJson<LoyaltyReward[]>(res);
@@ -414,14 +484,15 @@ export async function updateProfile(body: {
   firstName?: string;
   lastName?: string;
   phoneNumber?: string;
-}): Promise<Pick<AuthUser, 'id' | 'email' | 'walletAddress' | 'firstName' | 'lastName' | 'phoneNumber'>> {
+  bio?: string;
+}): Promise<Pick<AuthUser, 'id' | 'email' | 'walletAddress' | 'firstName' | 'lastName' | 'phoneNumber' | 'bio'>> {
   const res = await fetch(`${API_URL}/api/profile`, {
     method: 'PATCH',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const parsed = await parseJson<Pick<AuthUser, 'id' | 'email' | 'walletAddress' | 'firstName' | 'lastName' | 'phoneNumber'>>(res);
+  const parsed = await parseJson<Pick<AuthUser, 'id' | 'email' | 'walletAddress' | 'firstName' | 'lastName' | 'phoneNumber' | 'bio'>>(res);
   if (!parsed.ok || !parsed.data) {
     throw new Error(parsed.error ?? 'Failed to update profile');
   }
@@ -549,6 +620,8 @@ export interface AdminEventSummary {
   totalTicketsSold: number;
   totalCheckedIn: number;
   totalRevenueWei: string;
+  updatedAt?: string;
+  imageIpfsUrl?: string | null;
 }
 
 export interface AdminMember {
@@ -772,6 +845,22 @@ export async function deleteAdminTier(eventId: string, tierId: string): Promise<
   const parsed = await parseJson<void>(res);
   if (!parsed.ok) {
     throw new Error(parsed.error ?? 'Failed to delete ticket tier');
+  }
+}
+
+export async function uploadAdminEventBanner(
+  eventId: string,
+  params: { fileName: string; mimeType: string; contentBase64: string }
+): Promise<void> {
+  const res = await fetch(`${API_URL}/api/admin/events/${eventId}/upload-banner`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const parsed = await parseJson<void>(res);
+  if (!parsed.ok) {
+    throw new Error(parsed.error ?? 'Failed to upload event image');
   }
 }
 
@@ -1274,6 +1363,27 @@ export async function getBlockchainHealth(): Promise<{
   if (!parsed.ok || !parsed.data) throw new Error(parsed.error ?? 'Failed to fetch blockchain health');
   return parsed.data;
 }
+
+export async function acceptOrgInvite(token: string): Promise<{ org: any; role: number }> {
+  const res = await fetch(`${API_URL}/api/orgs/accept-invite`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  const parsed = await parseJson<{ org: any; role: number }>(res);
+  if (!parsed.ok || !parsed.data) {
+    throw new Error(parsed.error ?? 'Failed to accept invitation');
+  }
+  return parsed.data;
+}
+
+export async function getMyPendingInvites(): Promise<Array<{ id: string; orgId: string; orgName: string; roleToAssign: number; status: string; tokenExpiresAt: string; createdAt: string; inviteToken: string }>> {
+  const res = await fetch(`${API_URL}/api/orgs/invites/pending`, { credentials: 'include', cache: 'no-store' });
+  const parsed = await parseJson<Array<{ id: string; orgId: string; orgName: string; roleToAssign: number; status: string; tokenExpiresAt: string; createdAt: string; inviteToken: string }>>(res);
+  return parsed.data ?? [];
+}
+
 
 
 

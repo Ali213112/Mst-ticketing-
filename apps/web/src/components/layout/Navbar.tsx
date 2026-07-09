@@ -30,7 +30,8 @@ export default function Navbar() {
     ...(user ? [{ name: 'Profile', href: '/profile', icon: User }] : []),
   ];
 
-  const isActive = (href: string) => pathname.startsWith(href);
+  const isActive = (href: string) =>
+    href === '/events' ? pathname === '/' || pathname.startsWith('/events') : pathname.startsWith(href);
   const isLoginPage = pathname === '/login';
 
   return (
@@ -39,7 +40,7 @@ export default function Navbar() {
         <div className="flex justify-between h-16">
           {/* Logo */}
           <div className="flex items-center">
-            <Link href="/" className="flex items-center space-x-2">
+            <Link href="/events" className="flex items-center space-x-2">
               <span className="h-8 w-8 bg-zinc-900 rounded flex items-center justify-center text-white font-bold text-sm">
                 TC
               </span>

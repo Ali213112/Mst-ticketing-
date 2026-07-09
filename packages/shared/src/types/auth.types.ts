@@ -17,4 +17,6 @@ export interface AuthUserResponse {
   firstName: string | null;
   lastName: string | null;
   phoneNumber: string | null;
+  bio: string | null;
+  profileImage: string | null;
 }

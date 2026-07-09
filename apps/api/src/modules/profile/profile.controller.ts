@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
-import { getReferralStats, listUserRewards, updateUserProfile } from './profile.service.js';
+import { setAuthCookies } from '../auth/auth.cookies.js';
+import { getReferralStats, getWalletInfo, linkWalletToAccount, listUserRewards, requestFaucetFunds, updateUserProfile } from './profile.service.js';
 
 export async function listRewardsHandler(req: Request, res: Response): Promise<void> {
   if (!req.user) {
@@ -8,6 +9,19 @@ export async function listRewardsHandler(req: Request, res: Response): Promise<v
   }
   const data = await listUserRewards(req.user.userId);
   res.json({ success: true, data });
+}
+
+export async function getWalletHandler(req: Request, res: Response): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Authentication required' });
+    return;
+  }
+  const result = await getWalletInfo(req.user.userId);
+  if ('error' in result) {
+    res.status(result.status ?? 500).json({ success: false, error: result.error });
+    return;
+  }
+  res.json({ success: true, data: result });
 }
 
 export async function getReferralHandler(req: Request, res: Response): Promise<void> {
@@ -35,4 +49,40 @@ export async function updateProfileHandler(req: Request, res: Response): Promise
     return;
   }
   res.json({ success: true, data: result.profile });
+}
+
+export async function linkWalletHandler(req: Request, res: Response): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Authentication required' });
+    return;
+  }
+
+  const result = await linkWalletToAccount(req.user.userId, req.body);
+  if ('error' in result) {
+    res.status(result.status ?? 500).json({ success: false, error: result.error });
+    return;
+  }
+
+  setAuthCookies(res, result.accessToken, result.refreshToken);
+  res.json({
+    success: true,
+    data: {
+      walletAddress: result.walletAddress,
+      user: result.user,
+    },
+  });
+}
+
+export async function faucetHandler(req: Request, res: Response): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Authentication required' });
+    return;
+  }
+
+  const result = await requestFaucetFunds(req.user.userId, req.body);
+  if ('error' in result) {
+    res.status(result.status ?? 500).json({ success: false, error: result.error });
+    return;
+  }
+  res.json({ success: true, data: result });
 }

@@ -21,6 +21,41 @@ import profileRoutes from './modules/profile/profile.routes.js';
 
 ensureJwtKeysExist();
 
+function resolveCorsOrigin(): cors.CorsOptions['origin'] {
+  const configured = new Set<string>([env.FRONTEND_URL]);
+
+  if (env.NODE_ENV === 'development') {
+    configured.add('http://localhost:3000');
+    configured.add('http://127.0.0.1:3000');
+  }
+
+  const allowed = [...configured];
+
+  return (origin, callback) => {
+    // Same-origin or server-to-server requests may omit Origin
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    if (allowed.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    // Allow LAN dev hosts like http://192.168.1.41:3000
+    if (
+      env.NODE_ENV === 'development' &&
+      /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3})(:\d+)?$/.test(origin)
+    ) {
+      callback(null, true);
+      return;
+    }
+
+    callback(null, false);
+  };
+}
+
 const app = express();
 
 app.use(
@@ -30,7 +65,7 @@ app.use(
 );
 app.use(
   cors({
-    origin: env.FRONTEND_URL,
+    origin: resolveCorsOrigin(),
     credentials: true,
   })
 );
@@ -53,6 +88,10 @@ app.use((err: Error & { type?: string }, _req, res, next) => {
   if (err.type === 'entity.too.large') {
     res.status(413).json({ success: false, error: 'Upload too large (max 15MB)' });
     return;
+  }
+  console.error('[api] unhandled error:', err);
+  if (!res.headersSent) {
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
   next(err);
 });
@@ -137,6 +176,8 @@ app.get('/', (_req, res) => {
     profile: {
       rewards: 'GET /api/profile/rewards',
       referral: 'GET /api/profile/referral',
+      wallet: 'GET /api/profile/wallet',
+      faucet: 'POST /api/profile/faucet',
     },
     platformFinance: {
       kpis: 'GET /api/platform/kpis',
@@ -147,6 +188,14 @@ app.get('/', (_req, res) => {
       audit: 'GET /api/platform/audit',
     },
   });
+});
+
+// Catch errors from route handlers so the process stays up in dev
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('[api] route error:', err);
+  if (!res.headersSent) {
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
 });
 
 const port = env.PORT;

@@ -13,6 +13,10 @@ export interface EventSummary {
   imageIpfsUrl: string | null;
   totalTicketsSold: number;
   createdAt: string;
+  updatedAt: string;
+  contractAddress?: string | null;
+  totalCheckedIn?: number;
+  totalRevenueWei?: string;
 }
 
 export interface EventDetail extends EventSummary {

@@ -1,10 +1,33 @@
 import type { Request, Response } from 'express';
+import { findUserById } from '../auth/auth.repository.js';
 import {
   acceptOrgInvite,
   getMyOrganisations,
   getOrgProfile,
   getPublicOrgBySlug,
+  getMyInvites,
 } from './org.service.js';
+
+export async function listMyInvitesHandler(req: Request, res: Response): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Authentication required' });
+    return;
+  }
+
+  try {
+    const user = await findUserById(req.user.userId);
+    if (!user?.email) {
+      res.json({ success: true, data: [] });
+      return;
+    }
+
+    const invites = await getMyInvites(user.email);
+    res.json({ success: true, data: invites });
+  } catch (error) {
+    console.error('[orgs/invites/pending] failed:', error);
+    res.status(500).json({ success: false, error: 'Failed to load invites' });
+  }
+}
 
 /**
  * GET /api/orgs/me

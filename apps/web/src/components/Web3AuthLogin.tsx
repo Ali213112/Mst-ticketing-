@@ -8,7 +8,7 @@ import { EthereumPrivateKeyProvider } from '@web3auth/ethereum-provider';
 import { Web3AuthNoModal } from '@web3auth/no-modal';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, Phone, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
-import { verifySession, getMe, getPostLoginPath } from '@/lib/api';
+import { verifySession, getMe, getPostLoginPath, type AuthUser } from '@/lib/api';
 
 const clientId = process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID ?? '';
 const chainIdDecimal = Number(process.env.NEXT_PUBLIC_MST_CHAIN_ID ?? 4545);
@@ -81,7 +81,18 @@ const LOGIN = {
 
 type LoginMethod = 'email' | 'sms';
 
-export function Web3AuthLogin() {
+interface Web3AuthLoginProps {
+  /** Use inside modals — removes outer card chrome */
+  embedded?: boolean;
+  redirectOnSuccess?: boolean;
+  onSuccess?: (user: AuthUser) => void;
+}
+
+export function Web3AuthLogin({
+  embedded = false,
+  redirectOnSuccess = true,
+  onSuccess,
+}: Web3AuthLoginProps) {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -90,6 +101,7 @@ export function Web3AuthLogin() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!redirectOnSuccess || onSuccess) return;
     void (async () => {
       try {
         const me = await getMe();
@@ -100,7 +112,7 @@ export function Web3AuthLogin() {
         // not logged in
       }
     })();
-  }, [router]);
+  }, [router, redirectOnSuccess, onSuccess]);
 
   const login = useCallback(async (loginProvider: string, loginHint: string) => {
     if (!clientId) {
@@ -124,13 +136,17 @@ export function Web3AuthLogin() {
       }
 
       const sessionUser = await verifySession(idToken, walletAddress);
-      router.replace(getPostLoginPath(sessionUser.role));
+      if (onSuccess) {
+        onSuccess(sessionUser);
+      } else if (redirectOnSuccess) {
+        router.replace(getPostLoginPath(sessionUser.role));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, [router, onSuccess, redirectOnSuccess]);
 
   const handleEmailLogin = () => {
     if (!email.trim()) {
@@ -149,7 +165,13 @@ export function Web3AuthLogin() {
   };
 
   return (
-    <div className="w-full bg-white border border-zinc-200 rounded-lg p-6 space-y-6">
+    <div
+      className={
+        embedded
+          ? 'w-full space-y-5'
+          : 'w-full bg-white border border-zinc-200 rounded-lg p-6 space-y-6'
+      }
+    >
       {/* Tabs */}
       <div className="flex bg-zinc-100 p-0.5 rounded-md">
         <button

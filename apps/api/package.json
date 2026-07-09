@@ -13,6 +13,7 @@
     "migrate:down": "node --env-file=../../.env ./node_modules/node-pg-migrate/bin/node-pg-migrate.js down --database-url-var DATABASE_URL -m migrations --migrations-table pgmigrations",
     "generate:keys": "node scripts/generate-jwt-keys.mjs",
     "seed": "node --env-file=../../.env ./node_modules/tsx/dist/cli.mjs src/scripts/seed.ts",
+    "check:deployer": "node --env-file=../../.env ./node_modules/tsx/dist/cli.mjs src/scripts/check-deployer-balance.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src --ext .ts",
     "test": "node --env-file=../../.env ./node_modules/tsx/dist/cli.mjs src/test/smoke.test.ts"

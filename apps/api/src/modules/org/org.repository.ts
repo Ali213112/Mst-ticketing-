@@ -546,6 +546,40 @@ export async function listPendingInvites(orgId: string): Promise<InviteResponse[
   }));
 }
 
+export async function listInvitesForEmail(email: string) {
+  if (!email?.trim()) return [];
+
+  const result = await pool.query<{
+    id: string;
+    org_id: string;
+    org_name: string;
+    role_to_assign: number;
+    status: string;
+    token_expires_at: Date;
+    created_at: Date;
+    invite_token: string;
+  }>(
+    `SELECT i.id, i.org_id, o.name as org_name, i.role_to_assign, i.status, i.token_expires_at, i.created_at, i.invite_token
+     FROM invites i
+     JOIN organisations o ON i.org_id = o.id
+     WHERE i.invitee_email = $1 AND i.status = 'pending' AND i.token_expires_at > NOW()
+     ORDER BY i.created_at DESC`,
+    [email.toLowerCase().trim()]
+  );
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    orgId: row.org_id,
+    orgName: row.org_name,
+    roleToAssign: row.role_to_assign,
+    status: row.status,
+    tokenExpiresAt: row.token_expires_at.toISOString(),
+    createdAt: row.created_at.toISOString(),
+    inviteToken: row.invite_token,
+  }));
+}
+
+
 export async function countOrgInvites(orgId: string): Promise<number> {
   const result = await pool.query<{ count: string }>(
     `SELECT COUNT(*)::text AS count FROM invites WHERE org_id = $1`,

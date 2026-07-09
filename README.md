@@ -108,6 +108,9 @@ GET  /api/platform/audit           Audit log feed
 GET  /api/admin/finance/earnings   Org earnings summary
 GET  /api/profile/rewards          Loyalty rewards
 GET  /api/profile/referral         Referral stats
+GET  /api/profile/wallet           Custodial wallet + tMSTC balance
+POST /api/tickets/checkout         ChainPay checkout (production path)
+POST /api/tickets/mint             Direct on-chain mint (dev; requires ALLOW_DIRECT_MINT)
 ```
 
 ## Scripts
@@ -137,5 +140,6 @@ kubectl apply -f deploy/k8s/
 
 - [TICKETCHAIN_MASTER_SPEC.md](TICKETCHAIN_MASTER_SPEC.md) — full architecture specification
 - [docs/AUTH.md](docs/AUTH.md) — authentication strategy
+- [docs/DIRECT_MINT_AND_WALLET.md](docs/DIRECT_MINT_AND_WALLET.md) — direct mint, tMSTC, wallet balance setup
 
 Blockchain SDK: [@mstblockchain/mst-sdk](https://www.npmjs.com/package/@mstblockchain/mst-sdk)

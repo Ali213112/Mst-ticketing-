@@ -15,16 +15,19 @@ export default function EventsPage() {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
+  const [selectedOrg, setSelectedOrg] = useState<string | null>(null);
+  const [sort, setSort] = useState<'upcoming' | 'recent'>('upcoming');
   const [loading, setLoading] = useState(true);
 
   // Categories list extracted from mock/spec definitions
   const categories = ['Music', 'Sports', 'Conference', 'University', 'Boarding Pass', 'Expo'];
 
   useEffect(() => {
+    setLoading(true);
     void (async () => {
       try {
         const [data, featuredData] = await Promise.all([
-          listEvents(),
+          listEvents(sort),
           listFeaturedEvents().catch(() => [] as EventSummary[]),
         ]);
         setEvents(data);
@@ -36,7 +39,7 @@ export default function EventsPage() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [sort]);
 
   // Filter logic
   useEffect(() => {
@@ -48,7 +51,8 @@ export default function EventsPage() {
         (e) =>
           e.name.toLowerCase().includes(q) ||
           (e.category && e.category.toLowerCase().includes(q)) ||
-          (e.city && e.city.toLowerCase().includes(q))
+          (e.city && e.city.toLowerCase().includes(q)) ||
+          (e.orgName && e.orgName.toLowerCase().includes(q))
       );
     }
 
@@ -62,17 +66,24 @@ export default function EventsPage() {
       result = result.filter((e) => e.city?.toLowerCase() === selectedCity.toLowerCase());
     }
 
-    setFilteredEvents(result);
-  }, [search, selectedCategory, selectedCity, events]);
+    if (selectedOrg) {
+      result = result.filter((e) => e.orgName?.toLowerCase() === selectedOrg.toLowerCase());
+    }
 
-  // Extract unique cities
+    setFilteredEvents(result);
+  }, [search, selectedCategory, selectedCity, selectedOrg, events]);
+
+  // Extract unique cities and organisations
   const cities = Array.from(new Set(events.map((e) => e.city).filter(Boolean))) as string[];
+  const organisations = Array.from(new Set(events.map((e) => e.orgName).filter(Boolean))) as string[];
 
   const clearFilters = () => {
     setSearch('');
     setSelectedCategory(null);
     setSelectedCity(null);
+    setSelectedOrg(null);
   };
+
 
   return (
     <>
@@ -218,8 +229,43 @@ export default function EventsPage() {
                 </div>
               )}
 
+              {/* Organisations Widget */}
+              {organisations.length > 0 && (
+                <div className="bg-white border border-zinc-200 rounded p-4 space-y-3">
+                  <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-zinc-400 flex items-center space-x-1.5">
+                    <Compass className="w-3.5 h-3.5" />
+                    <span>Organisation</span>
+                  </h3>
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => setSelectedOrg(null)}
+                      className={`w-full text-left px-2 py-1 text-xs rounded transition-colors ${
+                        selectedOrg === null
+                          ? 'bg-zinc-900 text-white font-medium'
+                          : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+                      }`}
+                    >
+                      All Organisations
+                    </button>
+                    {organisations.map((org) => (
+                      <button
+                        key={org}
+                        onClick={() => setSelectedOrg(org)}
+                        className={`w-full text-left px-2 py-1 text-xs rounded transition-colors ${
+                          selectedOrg === org
+                            ? 'bg-zinc-900 text-white font-medium'
+                            : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+                        }`}
+                      >
+                        {org}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Clear button */}
-              {(search || selectedCategory || selectedCity) && (
+              {(search || selectedCategory || selectedCity || selectedOrg) && (
                 <button
                   onClick={clearFilters}
                   className="w-full text-center py-2 text-xs font-mono text-zinc-500 hover:text-zinc-900 border border-dashed border-zinc-200 rounded hover:border-zinc-400 transition-colors"
@@ -230,7 +276,35 @@ export default function EventsPage() {
             </div>
 
             {/* Grid of Events */}
-            <div className="lg:col-span-3">
+            <div className="lg:col-span-3 space-y-4">
+              {/* Sorting and result count header */}
+              <div className="flex justify-between items-center bg-white border border-zinc-200 rounded p-4">
+                <span className="text-xs font-mono text-zinc-500 uppercase">
+                  {filteredEvents.length} events found
+                </span>
+                <div className="flex items-center space-x-2">
+                  <span className="text-[10px] font-mono font-bold uppercase text-zinc-400">Sort By:</span>
+                  <div className="flex rounded bg-zinc-150 p-0.5 border border-zinc-200">
+                    <button
+                      onClick={() => setSort('upcoming')}
+                      className={`px-3 py-1 text-[10px] font-mono font-bold uppercase rounded ${
+                        sort === 'upcoming' ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:text-zinc-900'
+                      }`}
+                    >
+                      Upcoming
+                    </button>
+                    <button
+                      onClick={() => setSort('recent')}
+                      className={`px-3 py-1 text-[10px] font-mono font-bold uppercase rounded ${
+                        sort === 'recent' ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:text-zinc-900'
+                      }`}
+                    >
+                      Recent
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               {loading ? (
                 <div className="h-64 flex flex-col justify-center items-center space-y-2 text-zinc-400">
                   <div className="w-6 h-6 border-2 border-zinc-300 border-t-zinc-800 rounded-full animate-spin" />
@@ -250,67 +324,72 @@ export default function EventsPage() {
                     {filteredEvents.map((event) => {
                       const imageSrc = toDisplayImageUrl(event.imageIpfsUrl);
                       return (
-                      <motion.div
-                        key={event.id}
-                        layout
-                        initial={{ opacity: 0, scale: 0.98 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.98 }}
-                        className="bg-white border border-zinc-200 hover:border-zinc-900 rounded overflow-hidden flex flex-col justify-between group transition-all duration-300"
-                      >
-                        <div>
-                          {/* Image box */}
-                          <div className="aspect-video bg-zinc-100 relative overflow-hidden border-b border-zinc-100 flex items-center justify-center">
-                            {imageSrc ? (
-                              <img
-                                src={imageSrc}
-                                alt={event.name}
-                                className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500"
-                              />
-                            ) : (
-                              <Compass className="w-8 h-8 text-zinc-300 group-hover:text-zinc-500 group-hover:scale-110 transition-all duration-300" />
-                            )}
-                            {event.category && (
-                              <span className="absolute top-2 left-2 text-[10px] font-mono bg-zinc-950 text-white px-2 py-0.5 rounded tracking-wide">
-                                {event.category.toUpperCase()}
-                              </span>
-                            )}
-                          </div>
+                        <motion.div
+                          key={event.id}
+                          layout
+                          initial={{ opacity: 0, scale: 0.98 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.98 }}
+                          className="bg-white border border-zinc-200 hover:border-zinc-900 rounded overflow-hidden flex flex-col justify-between group transition-all duration-300"
+                        >
+                          <div>
+                            {/* Image box */}
+                            <div className="aspect-video bg-zinc-100 relative overflow-hidden border-b border-zinc-100 flex items-center justify-center">
+                              {imageSrc ? (
+                                <img
+                                  src={imageSrc}
+                                  alt={event.name}
+                                  className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500"
+                                />
+                              ) : (
+                                <Compass className="w-8 h-8 text-zinc-300 group-hover:text-zinc-500 group-hover:scale-110 transition-all duration-300" />
+                              )}
+                              {event.category && (
+                                <span className="absolute top-2 left-2 text-[10px] font-mono bg-zinc-950 text-white px-2 py-0.5 rounded tracking-wide">
+                                  {event.category.toUpperCase()}
+                                </span>
+                              )}
+                              {event.orgName && (
+                                <span className="absolute bottom-2 left-2 text-[9px] font-mono bg-white/95 text-zinc-800 border border-zinc-200 px-2 py-0.5 rounded tracking-wide">
+                                  {event.orgName}
+                                </span>
+                              )}
+                            </div>
 
-                          <div className="p-5 space-y-2">
-                            <h2 className="font-bold text-lg text-zinc-950 font-mono tracking-tight group-hover:text-zinc-900">
-                              {event.name}
-                            </h2>
-                            <div className="space-y-1">
-                              <p className="text-xs text-zinc-500 flex items-center space-x-1.5">
-                                <Calendar className="w-3.5 h-3.5" />
-                                <span>{new Date(event.eventDate).toLocaleDateString(undefined, {
-                                  dateStyle: 'medium'
-                                })}</span>
-                              </p>
-                              <p className="text-xs text-zinc-500 flex items-center space-x-1.5">
-                                <MapPin className="w-3.5 h-3.5" />
-                                <span>{event.city ? `${event.city}, ${event.country}` : 'Location TBA'}</span>
-                              </p>
+                            <div className="p-5 space-y-2">
+                              <h2 className="font-bold text-lg text-zinc-950 font-mono tracking-tight group-hover:text-zinc-900">
+                                {event.name}
+                              </h2>
+                              <div className="space-y-1">
+                                <p className="text-xs text-zinc-500 flex items-center space-x-1.5">
+                                  <Calendar className="w-3.5 h-3.5" />
+                                  <span>{new Date(event.eventDate).toLocaleDateString(undefined, {
+                                    dateStyle: 'medium'
+                                  })}</span>
+                                </p>
+                                <p className="text-xs text-zinc-500 flex items-center space-x-1.5">
+                                  <MapPin className="w-3.5 h-3.5" />
+                                  <span>{event.city ? `${event.city}, ${event.country}` : 'Location TBA'}</span>
+                                </p>
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        {/* Card bottom details */}
-                        <div className="px-5 pb-5 pt-2 flex justify-between items-center border-t border-zinc-50 mt-4">
-                          <span className="text-xs text-zinc-400 font-mono">
-                            {event.totalTicketsSold} sold
-                          </span>
-                          <Link
-                            href={`/events/${event.id}`}
-                            className="flex items-center text-xs font-mono font-semibold text-zinc-900 group-hover:translate-x-1 transition-transform"
-                          >
-                            <span>GET TICKETS</span>
-                            <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
-                          </Link>
-                        </div>
-                      </motion.div>
-                    );
+                          {/* Card bottom details */}
+                          <div className="px-5 pb-5 pt-2 flex justify-between items-center border-t border-zinc-50 mt-4">
+                            <span className="text-xs text-zinc-400 font-mono">
+                              {event.totalTicketsSold} sold
+                            </span>
+                            <Link
+                              href={`/events/${event.id}`}
+                              className="flex items-center text-xs font-mono font-semibold text-zinc-900 group-hover:translate-x-1 transition-transform"
+                            >
+                              <span>GET TICKETS</span>
+                              <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
+                            </Link>
+                          </div>
+                        </motion.div>
+                      );
                     })}
                   </AnimatePresence>
                 </div>

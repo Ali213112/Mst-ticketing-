@@ -110,6 +110,8 @@ export async function verifyWeb3AuthLogin(
         firstName: user.first_name,
         lastName: user.last_name,
         phoneNumber: user.phone_number,
+        bio: user.bio,
+        profileImage: user.profile_image,
       },
     };
   } catch (error) {
@@ -179,6 +181,8 @@ export async function getMe(userId: string): Promise<AuthUserResponse | null> {
     firstName: user.first_name,
     lastName: user.last_name,
     phoneNumber: user.phone_number,
+    bio: user.bio,
+    profileImage: user.profile_image,
   };
 }
 
@@ -285,6 +289,8 @@ export async function acceptInviteSession(
       firstName: user.first_name,
       lastName: user.last_name,
       phoneNumber: user.phone_number,
+      bio: user.bio,
+      profileImage: user.profile_image,
     },
   };
 }

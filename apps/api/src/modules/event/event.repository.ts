@@ -90,6 +90,10 @@ function mapEventSummary(row: EventRow): EventSummary {
     imageIpfsUrl: row.image_ipfs_url,
     totalTicketsSold: row.total_tickets_sold,
     createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+    contractAddress: row.contract_address,
+    totalCheckedIn: row.total_checked_in,
+    totalRevenueWei: row.total_revenue_wei,
   };
 }
 
@@ -155,20 +159,22 @@ export async function listEventsByOrg(params: {
   status?: string;
 }): Promise<{ rows: EventSummary[]; total: number }> {
   const values: unknown[] = [params.orgId, params.limit, params.offset];
-  let where = 'org_id = $1 AND deleted_at IS NULL';
+  let where = 'e.org_id = $1 AND e.deleted_at IS NULL';
   if (params.status) {
     values.push(params.status);
-    where += ` AND status = $${values.length}`;
+    where += ` AND e.status = $${values.length}`;
   }
 
   const countResult = await pool.query<{ count: string }>(
-    `SELECT COUNT(*)::text AS count FROM events WHERE ${where}`,
+    `SELECT COUNT(*)::text AS count FROM events e WHERE ${where}`,
     params.status ? [params.orgId, params.status] : [params.orgId]
   );
 
-  const result = await pool.query<EventRow>(
-    `SELECT ${EVENT_SELECT} FROM events WHERE ${where}
-     ORDER BY event_date DESC LIMIT $2 OFFSET $3`,
+  const result = await pool.query<EventRow & { org_name: string }>(
+    `SELECT e.*, o.name AS org_name FROM events e
+     JOIN organisations o ON e.org_id = o.id
+     WHERE ${where}
+     ORDER BY e.updated_at DESC, e.created_at DESC LIMIT $2 OFFSET $3`,
     values
   );
 
@@ -184,33 +190,44 @@ export async function listPublishedEvents(params: {
   city?: string;
   category?: string;
   search?: string;
+  sort?: string;
 }): Promise<{ rows: EventSummary[]; total: number }> {
   const values: unknown[] = [params.limit, params.offset];
-  let where = `status IN ('published', 'live') AND deleted_at IS NULL AND event_date >= NOW()`;
+  let where = `e.status IN ('published', 'live') AND e.deleted_at IS NULL`;
+  
+  if (params.sort !== 'recent') {
+    where += ` AND e.event_date >= NOW()`;
+  }
 
   if (params.city) {
     values.push(params.city);
-    where += ` AND city ILIKE $${values.length}`;
+    where += ` AND e.city ILIKE $${values.length}`;
   }
   if (params.category) {
     values.push(params.category);
-    where += ` AND category ILIKE $${values.length}`;
+    where += ` AND e.category ILIKE $${values.length}`;
   }
   if (params.search) {
     values.push(params.search);
-    where += ` AND to_tsvector('english', name || ' ' || COALESCE(description, '') || ' ' || COALESCE(city, ''))
+    where += ` AND to_tsvector('english', e.name || ' ' || COALESCE(e.description, '') || ' ' || COALESCE(e.city, ''))
                @@ plainto_tsquery('english', $${values.length})`;
   }
 
   const countValues = values.slice(2);
   const countResult = await pool.query<{ count: string }>(
-    `SELECT COUNT(*)::text AS count FROM events WHERE ${where}`,
+    `SELECT COUNT(*)::text AS count FROM events e WHERE ${where}`,
     countValues
   );
 
-  const result = await pool.query<EventRow>(
-    `SELECT ${EVENT_SELECT} FROM events WHERE ${where}
-     ORDER BY event_date ASC LIMIT $1 OFFSET $2`,
+  const orderClause = params.sort === 'recent' 
+    ? 'e.created_at DESC, e.event_date DESC' 
+    : 'e.event_date ASC';
+
+  const result = await pool.query<EventRow & { org_name: string }>(
+    `SELECT e.*, o.name AS org_name FROM events e
+     JOIN organisations o ON e.org_id = o.id
+     WHERE ${where}
+     ORDER BY ${orderClause} LIMIT $1 OFFSET $2`,
     values
   );
 

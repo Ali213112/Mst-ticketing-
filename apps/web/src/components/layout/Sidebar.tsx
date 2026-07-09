@@ -18,7 +18,6 @@ import {
   FileCheck,
   Ticket,
   Link2,
-  Palette,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -43,14 +42,10 @@ export default function Sidebar({ type }: SidebarProps) {
 
   const adminItems = [
     { name: 'Overview', href: '/admin', icon: LayoutDashboard },
-    { name: 'Onboarding', href: '/admin/onboarding', icon: FileCheck },
-    { name: 'Settings', href: '/admin/settings', icon: Shield },
-    { name: 'Branding', href: '/admin/branding', icon: Palette },
     { name: 'Events', href: '/admin/events', icon: Calendar },
+    { name: 'Organisation', href: '/admin/organisation', icon: Building2 },
+    { name: 'Onboarding', href: '/admin/onboarding', icon: FileCheck },
     { name: 'Venues', href: '/admin/venues', icon: MapPin },
-    { name: 'Members & Roles', href: '/admin/members', icon: Users },
-    { name: 'Promo Codes', href: '/admin/promo-codes', icon: Tag },
-    { name: 'Finance & Settlements', href: '/admin/finance', icon: CreditCard },
   ];
 
   const menuItems = type === 'platform' ? platformItems : adminItems;
@@ -58,6 +53,16 @@ export default function Sidebar({ type }: SidebarProps) {
   const isActive = (href: string) => {
     if (href === '/platform' || href === '/admin') {
       return pathname === href;
+    }
+    if (href === '/admin/organisation') {
+      return (
+        pathname.startsWith('/admin/organisation') ||
+        pathname.startsWith('/admin/settings') ||
+        pathname.startsWith('/admin/branding') ||
+        pathname.startsWith('/admin/members') ||
+        pathname.startsWith('/admin/promo-codes') ||
+        pathname.startsWith('/admin/finance')
+      );
     }
     return pathname.startsWith(href);
   };

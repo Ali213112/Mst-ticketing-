@@ -8,7 +8,14 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Grayish monochrome palette
+        // Monochrome design system — six named values, no exceptions
+        ink: "#0A0A0A",
+        charcoal: "#242424",
+        graphite: "#5C5C5C",
+        silver: "#A6A6A6",
+        mist: "#E4E4E4",
+        paper: "#FAFAF9",
+        // Legacy brand palette — kept for existing pages
         brand: {
           50: '#f9fafb',
           100: '#f3f4f6',
@@ -22,6 +29,19 @@ module.exports = {
           900: '#111827',
           950: '#030712',
         }
+      },
+      fontFamily: {
+        display: ["var(--font-display)", "serif"],
+        body: ["var(--font-body)", "sans-serif"],
+        mono: ["var(--font-mono)", "monospace"],
+      },
+      borderRadius: {
+        // Sharp, editorial — not the default rounded-everything look
+        none: "0px",
+        sm: "2px",
+        DEFAULT: "4px",
+        md: "6px",
+        lg: "10px",
       },
     },
   },

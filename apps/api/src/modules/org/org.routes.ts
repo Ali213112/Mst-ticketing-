@@ -5,6 +5,7 @@ import {
   getOrgBySlugHandler,
   getOrgProfileHandler,
   listMyOrgsHandler,
+  listMyInvitesHandler,
 } from './org.controller.js';
 
 const router = Router();
@@ -25,6 +26,11 @@ router.use(authenticateJWT);
 // GET /api/orgs/me  — list all orgs the authenticated user belongs to
 router.get('/me', (req, res) => {
   void listMyOrgsHandler(req, res);
+});
+
+// GET /api/orgs/invites/pending — list pending invites for the user
+router.get('/invites/pending', (req, res) => {
+  void listMyInvitesHandler(req, res);
 });
 
 // POST /api/orgs/accept-invite  — accept an org invite by token

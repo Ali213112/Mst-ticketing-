@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { CreditCard, Coins, AlertCircle, Plus, Minus, Loader2, Tag, Check } from 'lucide-react';
-import { createCheckout, getMe, mintTickets, validatePromoCode, type TierResponse } from '@/lib/api';
+import { createCheckout, getMe, mintTickets, validatePromoCode, type AuthUser, type TierResponse } from '@/lib/api';
 import { newIdempotencyKey } from '@/lib/idempotency';
+import { AuthGateOverlay } from '@/components/AuthGateOverlay';
+import { WalletConnectModal } from '@/components/WalletConnectModal';
 
 const allowDirectMint = process.env.NEXT_PUBLIC_ALLOW_DIRECT_MINT !== 'false';
 
@@ -22,26 +24,20 @@ export function TierPurchase({ tier, currency = 'INR' }: TierPurchaseProps) {
   const [promoValid, setPromoValid] = useState<{ discountWei: string } | null>(null);
   const [promoChecking, setPromoChecking] = useState(false);
   const [promoError, setPromoError] = useState<string | null>(null);
+  const [showAuthGate, setShowAuthGate] = useState(false);
+  const [showWalletModal, setShowWalletModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'chainpay' | 'mint' | null>(null);
 
   const remaining = tier.totalSupply - tier.minted;
   const soldOut = tier.status === 'sold_out' || remaining <= 0;
   const canCheckout = tier.priceDisplay !== null && tier.priceDisplay > 0;
   const maxBuyable = Math.min(tier.maxPerWallet, remaining, 10);
 
-  async function ensureLoggedIn(): Promise<boolean> {
-    const me = await getMe();
-    if (me) return true;
-    setError('Please sign in to buy tickets.');
-    return false;
-  }
-
-  async function handleChainpayCheckout() {
+  const runChainpayCheckout = useCallback(async () => {
     if (!canCheckout) {
       setError('This tier is not configured for fiat checkout.');
       return;
     }
-    if (!(await ensureLoggedIn())) return;
-
     setLoading('chainpay');
     setError(null);
     try {
@@ -56,11 +52,9 @@ export function TierPurchase({ tier, currency = 'INR' }: TierPurchaseProps) {
       setError(err instanceof Error ? err.message : 'Checkout failed');
       setLoading(null);
     }
-  }
+  }, [canCheckout, quantity, tier.id]);
 
-  async function handleDirectMint() {
-    if (!(await ensureLoggedIn())) return;
-
+  const runDirectMint = useCallback(async () => {
     setLoading('mint');
     setError(null);
     try {
@@ -74,7 +68,37 @@ export function TierPurchase({ tier, currency = 'INR' }: TierPurchaseProps) {
       setError(err instanceof Error ? err.message : 'Mint failed');
       setLoading(null);
     }
+  }, [quantity, tier.id]);
+
+  async function requireAuth(action: 'chainpay' | 'mint'): Promise<boolean> {
+    const me = await getMe();
+    if (me) return true;
+    setPendingAction(action);
+    setShowAuthGate(true);
+    return false;
   }
+
+  async function handleChainpayCheckout() {
+    if (!(await requireAuth('chainpay'))) return;
+    await runChainpayCheckout();
+  }
+
+  async function handleDirectMint() {
+    if (!(await requireAuth('mint'))) return;
+    await runDirectMint();
+  }
+
+  const handleAuthSuccess = (_user: AuthUser) => {
+    setShowAuthGate(false);
+    setShowWalletModal(true);
+  };
+
+  const completePendingPurchase = async () => {
+    const action = pendingAction;
+    setPendingAction(null);
+    if (action === 'chainpay') await runChainpayCheckout();
+    else if (action === 'mint') await runDirectMint();
+  };
 
   const applyPromo = async () => {
     if (!promoCode.trim()) return;
@@ -109,6 +133,7 @@ export function TierPurchase({ tier, currency = 'INR' }: TierPurchaseProps) {
   };
 
   return (
+    <>
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
@@ -235,24 +260,34 @@ export function TierPurchase({ tier, currency = 'INR' }: TierPurchaseProps) {
             ) : null}
 
             {allowDirectMint && (
-              <button
-                type="button"
-                disabled={loading !== null}
-                onClick={() => void handleDirectMint()}
-                className="flex-1 sm:flex-initial flex items-center justify-center space-x-2 px-4 py-2 border border-zinc-200 text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900 hover:border-zinc-300 rounded text-xs font-mono font-semibold tracking-wider uppercase transition-colors"
-              >
-                {loading === 'mint' ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Minting...</span>
-                  </>
-                ) : (
-                  <>
-                    <Coins className="w-3.5 h-3.5" />
-                    <span>On-chain Mint</span>
-                  </>
-                )}
-              </button>
+              <>
+                <button
+                  type="button"
+                  disabled={loading !== null}
+                  onClick={() => void handleDirectMint()}
+                  className="flex-1 sm:flex-initial flex items-center justify-center space-x-2 px-4 py-2 border border-zinc-200 text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900 hover:border-zinc-300 rounded text-xs font-mono font-semibold tracking-wider uppercase transition-colors"
+                >
+                  {loading === 'mint' ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Minting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Coins className="w-3.5 h-3.5" />
+                      <span>On-chain Mint</span>
+                    </>
+                  )}
+                </button>
+                <p className="w-full text-[10px] font-mono text-zinc-400 leading-relaxed">
+                  Dev mode: skips ChainPay. The platform deployer wallet pays tier price in tMSTC on MST Chain.
+                  Your wallet receives the NFT ticket. Check balance on{' '}
+                  <Link href="/profile" className="underline text-zinc-600">
+                    Profile
+                  </Link>
+                  .
+                </p>
+              </>
             )}
           </div>
         </div>
@@ -262,16 +297,35 @@ export function TierPurchase({ tier, currency = 'INR' }: TierPurchaseProps) {
       {error && (
         <div className="flex items-start space-x-2 bg-red-50 text-red-700 p-3 rounded text-xs border border-red-100">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <p>{error}</p>
-            {error.includes('sign in') && (
-              <Link href="/login" className="underline font-semibold block text-[10px] uppercase font-mono tracking-wider">
-                Go to Sign In
-              </Link>
-            )}
-          </div>
+          <p>{error}</p>
         </div>
       )}
     </motion.div>
+
+    <AuthGateOverlay
+      open={showAuthGate}
+      onClose={() => {
+        setShowAuthGate(false);
+        setPendingAction(null);
+      }}
+      onSuccess={(user) => handleAuthSuccess(user)}
+      title="Sign in to get tickets"
+      subtitle="Browse events as a guest — sign in when you're ready to purchase or mint."
+    />
+
+    <WalletConnectModal
+      open={showWalletModal}
+      allowSkip
+      title="Connect wallet for MST Testnet"
+      onClose={() => {
+        setShowWalletModal(false);
+        void completePendingPurchase();
+      }}
+      onComplete={() => {
+        setShowWalletModal(false);
+        void completePendingPurchase();
+      }}
+    />
+    </>
   );
 }
