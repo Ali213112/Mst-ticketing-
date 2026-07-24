@@ -1,12 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Ticket,
   ArrowRight,
-  RefreshCw,
   QrCode,
   Download,
   Send,
@@ -15,8 +14,6 @@ import {
   X,
   CheckCircle2,
   Clock,
-  Compass,
-  ArrowLeft,
   Loader2
 } from 'lucide-react';
 import {
@@ -31,9 +28,20 @@ import {
 } from '@/lib/api';
 import Navbar from '@/components/layout/Navbar';
 import { ContractAddressRow, ContractExplorerLink } from '@/components/blockchain/ContractExplorerLink';
+import { PublicListToolbar, FilterChip, ClearFiltersButton } from '@/components/public/PublicListToolbar';
+
+type TicketStatusFilter = 'all' | 'valid' | 'used' | 'listed';
+
+function sortTicketsByRecent(tickets: TicketSummary[]): TicketSummary[] {
+  return [...tickets].sort(
+    (a, b) => new Date(b.mintedAt).getTime() - new Date(a.mintedAt).getTime()
+  );
+}
 
 export default function MyTicketsPage() {
   const [tickets, setTickets] = useState<TicketSummary[]>([]);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<TicketStatusFilter>('all');
   const [loading, setLoading] = useState(true);
   const [needsLogin, setNeedsLogin] = useState(false);
 
@@ -63,7 +71,7 @@ export default function MyTicketsPage() {
         return;
       }
       const rows = await listMyTickets();
-      setTickets(rows);
+      setTickets(sortTicketsByRecent(rows));
     } catch (err) {
       console.error(err);
     } finally {
@@ -190,24 +198,68 @@ export default function MyTicketsPage() {
     }
   };
 
+  const filteredTickets = useMemo(() => {
+    let result = [...tickets];
+    const q = search.trim().toLowerCase();
+    if (q) {
+      result = result.filter(
+        (t) =>
+          t.id.toLowerCase().includes(q) ||
+          String(t.tokenId).includes(q) ||
+          t.contractAddress.toLowerCase().includes(q) ||
+          t.eventId.toLowerCase().includes(q)
+      );
+    }
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'listed') {
+        result = result.filter((t) => t.status === 'listed_for_resale');
+      } else {
+        result = result.filter((t) => t.status === statusFilter);
+      }
+    }
+    return sortTicketsByRecent(result);
+  }, [tickets, search, statusFilter]);
+
+  const hasActiveFilters = Boolean(search || statusFilter !== 'all');
+
   return (
     <>
       <Navbar />
       <div className="bg-zinc-50 min-h-[calc(100vh-4rem)] pb-16">
-        {/* Title Header */}
-        <section className="bg-white border-b border-zinc-200 py-12 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-4xl mx-auto space-y-3">
-            <h1 className="text-3xl font-bold tracking-tight text-zinc-900 font-mono">
-              TICKET WALLET
-            </h1>
-            <p className="text-zinc-500 text-sm max-w-lg">
-              Manage your digital entry passes, view dynamic rotating QR codes for gates, list tickets on the marketplace, or gift them.
-            </p>
-          </div>
-        </section>
+        <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+          {!needsLogin && !loading && tickets.length > 0 && (
+            <PublicListToolbar
+              search={search}
+              onSearchChange={setSearch}
+              placeholder="Search by token ID, ticket ID, or contract…"
+              hasActiveFilters={hasActiveFilters}
+              filterPanel={
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 w-full sm:w-auto">
+                    Status
+                  </span>
+                  {(['all', 'valid', 'used', 'listed'] as TicketStatusFilter[]).map((s) => (
+                    <FilterChip
+                      key={s}
+                      active={statusFilter === s}
+                      onClick={() => setStatusFilter(s)}
+                    >
+                      {s === 'all' ? 'All' : s === 'listed' ? 'Listed' : s.charAt(0).toUpperCase() + s.slice(1)}
+                    </FilterChip>
+                  ))}
+                  {hasActiveFilters && (
+                    <ClearFiltersButton
+                      onClick={() => {
+                        setSearch('');
+                        setStatusFilter('all');
+                      }}
+                    />
+                  )}
+                </div>
+              }
+            />
+          )}
 
-        {/* Content */}
-        <main className="max-w-4xl mx-auto px-4 mt-8">
           {loading ? (
             <div className="h-64 flex flex-col justify-center items-center space-y-2 text-zinc-400">
               <div className="w-6 h-6 border-2 border-zinc-300 border-t-zinc-800 rounded-full animate-spin" />
@@ -230,25 +282,31 @@ export default function MyTicketsPage() {
                 <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
-          ) : tickets.length === 0 ? (
-            <div className="bg-white border border-zinc-200 rounded p-12 text-center space-y-4">
+          ) : filteredTickets.length === 0 ? (
+            <div className="bg-white border border-zinc-200 rounded-xl p-12 text-center space-y-4">
               <Ticket className="w-8 h-8 mx-auto text-zinc-300" />
               <div className="space-y-1">
-                <h3 className="text-sm font-semibold text-zinc-950">No tickets found</h3>
+                <h3 className="text-sm font-semibold text-zinc-950">
+                  {tickets.length === 0 ? 'No tickets yet' : 'No tickets match'}
+                </h3>
                 <p className="text-xs text-zinc-500">
-                  You don't own any tickets yet. Explore our events marketplace to acquire some!
+                  {tickets.length === 0
+                    ? "You don't own any tickets yet. Browse events to get started."
+                    : 'Try a different search or clear your filters.'}
                 </p>
               </div>
-              <Link
-                href="/events"
-                className="inline-flex items-center space-x-1 px-4 py-2 border border-zinc-900 text-zinc-900 text-xs font-mono font-bold uppercase tracking-wider hover:bg-zinc-900 hover:text-white transition-colors"
-              >
-                <span>Browse Events</span>
-              </Link>
+              {tickets.length === 0 && (
+                <Link
+                  href="/events"
+                  className="inline-flex items-center px-4 py-2 border border-zinc-900 text-zinc-900 text-xs font-mono font-bold uppercase hover:bg-zinc-900 hover:text-white transition-colors rounded-lg"
+                >
+                  Browse events
+                </Link>
+              )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {tickets.map((ticket) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {filteredTickets.map((ticket) => (
                 <div
                   key={ticket.id}
                   onClick={() => handleOpenTicket(ticket)}
@@ -264,9 +322,11 @@ export default function MyTicketsPage() {
                           ? 'bg-zinc-50 text-zinc-700 border-zinc-200'
                           : ticket.status === 'used'
                           ? 'bg-zinc-100 text-zinc-400 border-zinc-200 line-through'
-                          : 'bg-zinc-900 text-white border-zinc-950'
+                          : ticket.status === 'listed_for_resale'
+                          ? 'bg-zinc-900 text-white border-zinc-950'
+                          : 'bg-zinc-100 text-zinc-500 border-zinc-200'
                       }`}>
-                        {ticket.status.toUpperCase()}
+                        {ticket.status === 'listed_for_resale' ? 'LISTED' : ticket.status.toUpperCase()}
                       </span>
                     </div>
 
