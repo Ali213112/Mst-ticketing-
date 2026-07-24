@@ -14,11 +14,12 @@ export function getMstReadClient(): Client {
 }
 
 function getFaucetWallet(): Wallet {
-  if (!env.MST_FAUCET_PRIVATE_KEY) {
-    throw new Error('MST_FAUCET_PRIVATE_KEY is not configured');
+  const privateKey = env.MST_FAUCET_PRIVATE_KEY || env.MST_DEPLOYER_PRIVATE_KEY;
+  if (!privateKey) {
+    throw new Error('Neither MST_FAUCET_PRIVATE_KEY nor MST_DEPLOYER_PRIVATE_KEY is configured');
   }
   if (!faucetWallet) {
-    faucetWallet = new Wallet(env.MST_FAUCET_PRIVATE_KEY, new JsonRpcProvider(env.MST_RPC_URL));
+    faucetWallet = new Wallet(privateKey, new JsonRpcProvider(env.MST_RPC_URL));
   }
   return faucetWallet;
 }
@@ -52,5 +53,5 @@ export async function sendNativeTmstc(to: string, amountWei: string): Promise<st
 }
 
 export function isFaucetConfigured(): boolean {
-  return Boolean(env.MST_FAUCET_PRIVATE_KEY);
+  return Boolean(env.MST_FAUCET_PRIVATE_KEY || env.MST_DEPLOYER_PRIVATE_KEY);
 }
