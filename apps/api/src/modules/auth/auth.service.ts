@@ -67,6 +67,7 @@ export async function verifyWeb3AuthLogin(
     await client.query('BEGIN');
 
     let user = await findUserByWeb3AuthSub(claims.sub);
+    const isNewUser = !user;
 
     if (!user) {
       user = await createWeb3AuthUser(client, {
@@ -112,6 +113,7 @@ export async function verifyWeb3AuthLogin(
         phoneNumber: user.phone_number,
         bio: user.bio,
         profileImage: user.profile_image,
+        isNewUser,
       },
     };
   } catch (error) {
