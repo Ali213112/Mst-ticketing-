@@ -142,8 +142,12 @@ export default function LoginPage() {
                 <Web3AuthLogin
                   embedded
                   onSuccess={(user) => {
-                    setSessionUser(user);
-                    setStep('wallet');
+                    if (user.isNewUser) {
+                      setSessionUser(user);
+                      setStep('wallet');
+                    } else {
+                      finishLogin(user);
+                    }
                   }}
                   redirectOnSuccess={false}
                 />

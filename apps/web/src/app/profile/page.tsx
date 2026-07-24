@@ -26,6 +26,7 @@ import {
   getReferralStats,
   updateProfile,
   logoutSession,
+  requestFaucetFunds,
   type AuthUser,
   type LoyaltyReward,
   type ReferralStats,
@@ -108,6 +109,44 @@ export default function ProfilePage() {
   const [externalWallet, setExternalWallet] = useState<ConnectedExternalWallet | null>(null);
   const [externalBalanceWei, setExternalBalanceWei] = useState<string | null>(null);
   const [showWalletModal, setShowWalletModal] = useState(false);
+
+  // Faucet request states
+  const [requestingPlatformFaucet, setRequestingPlatformFaucet] = useState(false);
+  const [faucetMessage, setFaucetMessage] = useState<string | null>(null);
+  const [faucetErr, setFaucetErr] = useState<string | null>(null);
+  const [walletAddressCopied, setWalletAddressCopied] = useState(false);
+
+  const handleRequestPlatformFaucet = async () => {
+    if (!user?.walletAddress) return;
+    setRequestingPlatformFaucet(true);
+    setFaucetMessage(null);
+    setFaucetErr(null);
+    try {
+      const res = await requestFaucetFunds(user.walletAddress);
+      if (res.mode === 'in_app') {
+        setFaucetMessage(`Successfully requested tMSTC! Tx Hash: ${res.txHash || 'completed'}`);
+      } else {
+        setFaucetMessage(res.message || 'Directing to faucet website...');
+        void navigator.clipboard.writeText(user.walletAddress);
+        window.open(res.externalUrl, '_blank');
+      }
+      // update balance
+      const walletData = await getWalletBalance().catch(() => null);
+      setWallet(walletData);
+    } catch (err) {
+      setFaucetErr(err instanceof Error ? err.message : 'Faucet request failed');
+    } finally {
+      setRequestingPlatformFaucet(false);
+    }
+  };
+
+  const handleGoToExternalFaucet = () => {
+    if (user?.walletAddress) {
+      void navigator.clipboard.writeText(user.walletAddress);
+    }
+    window.open('https://faucet.mstblockchain.com/', '_blank');
+  };
+
 
   const inputClass =
     'w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-xs font-mono text-zinc-900 focus:outline-none focus:border-zinc-400';
@@ -472,17 +511,73 @@ export default function ProfilePage() {
                         )}
                       </div>
 
-                      <div className="space-y-1">
+                      <div className="space-y-1.5">
                         <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-400">
                           Ticket wallet (on file)
                         </span>
-                        <p className="text-xs font-mono text-zinc-700 break-all bg-zinc-50 border border-zinc-100 rounded p-2 select-all">
-                          {user.walletAddress}
-                        </p>
+                        <div className="flex gap-2">
+                          <p className="flex-1 text-xs font-mono text-zinc-700 break-all bg-zinc-50 border border-zinc-100 rounded p-2 select-all truncate">
+                            {user.walletAddress}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void navigator.clipboard.writeText(user.walletAddress);
+                              setWalletAddressCopied(true);
+                              setTimeout(() => setWalletAddressCopied(false), 2000);
+                            }}
+                            className="px-3 bg-zinc-900 hover:bg-zinc-800 text-white rounded flex items-center justify-center transition-colors shrink-0"
+                            title="Copy Wallet Address"
+                          >
+                            {walletAddressCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
                         <p className="text-[10px] text-zinc-400 font-mono">
                           Minted tickets go here. Connect MetaMask above to switch.
                         </p>
                         <ContractExplorerLink value={user.walletAddress} type="address" className="text-[10px]" />
+                      </div>
+
+                      {/* MST Blockchain Faucet Widget */}
+                      <div className="border-t border-zinc-150 pt-4 space-y-3">
+                        <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-400">
+                          MST TESTNET FAUCET
+                        </span>
+                        
+                        <p className="text-[11px] text-zinc-500 leading-relaxed font-body">
+                          Need native gas tokens (tMSTC) to purchase tickets or pay transactions? Get some instantly.
+                        </p>
+
+                        <div className="flex flex-col gap-2">
+                          <button
+                            type="button"
+                            disabled={requestingPlatformFaucet || !user.walletAddress}
+                            onClick={handleRequestPlatformFaucet}
+                            className="w-full py-2 bg-zinc-950 text-white rounded hover:bg-zinc-800 text-xs font-mono font-bold transition-all disabled:opacity-40"
+                          >
+                            {requestingPlatformFaucet ? 'Transferring tMSTC...' : 'Request tMSTC from Platform'}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={handleGoToExternalFaucet}
+                            className="w-full py-2 border border-zinc-300 text-zinc-800 hover:bg-zinc-50 rounded text-xs font-mono font-bold text-center block transition-all"
+                          >
+                            Go to External Faucet website ↗
+                          </button>
+                        </div>
+
+                        {faucetMessage && (
+                          <p className="text-[10px] font-mono text-green-700 bg-green-50 border border-green-100 rounded p-2">
+                            {faucetMessage}
+                          </p>
+                        )}
+
+                        {faucetErr && (
+                          <p className="text-[10px] font-mono text-red-700 bg-red-50 border border-red-100 rounded p-2">
+                            {faucetErr}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -11,6 +11,7 @@ export interface AuthUser {
   phoneNumber?: string | null;
   bio?: string | null;
   profileImage?: string | null;
+  isNewUser?: boolean;
 }
 
 export function getPostLoginPath(role: number): string {
@@ -29,6 +30,8 @@ export interface EventSummary {
   status: string;
   imageIpfsUrl: string | null;
   totalTicketsSold: number;
+  updatedAt?: string;
+  createdAt?: string;
 }
 
 export interface PublicOrgProfile {
