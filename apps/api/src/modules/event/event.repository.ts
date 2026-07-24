@@ -220,7 +220,7 @@ export async function listPublishedEvents(params: {
   );
 
   const orderClause = params.sort === 'recent' 
-    ? 'e.created_at DESC, e.event_date DESC' 
+    ? 'e.updated_at DESC, e.created_at DESC' 
     : 'e.event_date ASC';
 
   const result = await pool.query<EventRow & { org_name: string }>(
@@ -232,7 +232,10 @@ export async function listPublishedEvents(params: {
   );
 
   return {
-    rows: result.rows.map(mapEventSummary),
+    rows: result.rows.map((row) => ({
+      ...mapEventSummary(row),
+      orgName: row.org_name,
+    })),
     total: Number(countResult.rows[0]?.count ?? 0),
   };
 }
